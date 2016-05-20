@@ -24,16 +24,24 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
+import java.io.IOException;
+
 /**
  * A factory class for instantiating replication objects that deal with replication state.
  */
 @InterfaceAudience.Private
 public class ReplicationFactory {
 
-  public static ReplicationQueues getReplicationQueues(final ZooKeeperWatcher zk,
-      Configuration conf, Abortable abortable) {
-    return new ReplicationQueuesZKImpl(zk, conf, abortable);
+  public static ReplicationQueues getReplicationQueues(ReplicationQueuesArguments args) throws IOException {
+    try {
+      return (ReplicationQueues) args.getConf().getClass("hbase.region.replica.replication.ReplicationQueuesType",
+        ReplicationQueuesZKImpl.class).getDeclaredConstructor(ReplicationQueuesArguments.class).newInstance(args);
+    } catch (Exception e) {
+      e.printStackTrace();
+      throw new IOException("ReplicationFactory.getReplicationQueues() failed to construct ReplicationQueue");
+    }
   }
+
 
   public static ReplicationQueuesClient getReplicationQueuesClient(final ZooKeeperWatcher zk,
       Configuration conf, Abortable abortable) {

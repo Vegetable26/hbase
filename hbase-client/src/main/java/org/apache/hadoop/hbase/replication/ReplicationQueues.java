@@ -110,10 +110,10 @@ public interface ReplicationQueues {
 
   /**
    * Checks if the provided znode is the same as this region server's
-   * @param znode to check
+   * @param regionserver the id of the region server
    * @return if this is this rs's znode
    */
-  boolean isThisOurZnode(String znode);
+  boolean isThisOurRegionServer(String regionserver);
 
   /**
    * Add a peer to hfile reference queue if peer does not exist.

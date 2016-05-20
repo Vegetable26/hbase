@@ -71,6 +71,10 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
 
   private static final Log LOG = LogFactory.getLog(ReplicationQueuesZKImpl.class);
 
+  public ReplicationQueuesZKImpl(ReplicationQueuesArguments args) {
+    this(args.getZk(), args.getConf(), args.getAbort());
+  }
+
   public ReplicationQueuesZKImpl(final ZooKeeperWatcher zk, Configuration conf,
       Abortable abortable) {
     super(zk, conf, abortable);
@@ -166,8 +170,8 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
   }
 
   @Override
-  public boolean isThisOurZnode(String znode) {
-    return ZKUtil.joinZNode(this.queuesZNode, znode).equals(this.myQueuesZnode);
+  public boolean isThisOurRegionServer(String regionserver) {
+    return ZKUtil.joinZNode(this.queuesZNode, regionserver).equals(this.myQueuesZnode);
   }
 
   @Override
@@ -223,7 +227,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
       this.abortable.abort("Failed to get a list of queues for region server: "
           + this.myQueuesZnode, e);
     }
-    return listOfQueues;
+    return listOfQueues == null ? new ArrayList<String>() : listOfQueues;
   }
 
   /**

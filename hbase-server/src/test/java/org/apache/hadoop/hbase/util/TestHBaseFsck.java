@@ -65,6 +65,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableExistsException;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.RegionLocations;
@@ -2286,7 +2287,8 @@ public class TestHBaseFsck {
     // create replicator
     ZooKeeperWatcher zkw = new ZooKeeperWatcher(conf, "Test Hbase Fsck", connection);
     ReplicationQueues repQueues =
-        ReplicationFactory.getReplicationQueues(zkw, conf, connection);
+        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, connection,
+            zkw));
     repQueues.init("server1");
     // queues for current peer, no errors
     repQueues.addLog("1", "file1");

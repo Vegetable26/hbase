@@ -73,7 +73,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
   private static final Log LOG = LogFactory.getLog(ReplicationQueuesZKImpl.class);
 
   public ReplicationQueuesZKImpl(ReplicationQueuesArguments args) {
-    this(args.getZk(), args.getConf(), args.getAbort());
+    this(args.getZk(), args.getConf(), args.getAbortable());
   }
 
   public ReplicationQueuesZKImpl(final ZooKeeperWatcher zk, Configuration conf,

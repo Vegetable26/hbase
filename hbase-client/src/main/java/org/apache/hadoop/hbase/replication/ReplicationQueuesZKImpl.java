@@ -166,8 +166,8 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
   }
 
   @Override
-  public boolean isThisOurZnode(String znode) {
-    return ZKUtil.joinZNode(this.queuesZNode, znode).equals(this.myQueuesZnode);
+  public boolean isThisOurRegionServer(String regionserver) {
+    return ZKUtil.joinZNode(this.queuesZNode, regionserver).equals(this.myQueuesZnode);
   }
 
   @Override

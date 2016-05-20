@@ -24,6 +24,8 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
+import java.io.IOException;
+
 /**
  * A factory class for instantiating replication objects that deal with replication state.
  */
@@ -31,8 +33,11 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 public class ReplicationFactory {
 
   public static ReplicationQueues getReplicationQueues(final ZooKeeperWatcher zk,
-      Configuration conf, Abortable abortable) {
-    return new ReplicationQueuesZKImpl(zk, conf, abortable);
+      Configuration conf, Abortable abortable) throws IOException {
+      if (conf.get("hbase.region.replica.replication.WALTrackingMode", "Zookeeper").equals("Zookeeper")) {
+          return new ReplicationQueuesZKImpl(zk, conf, abortable);
+      }
+      return new ReplicationQueuesHBaseImpl(conf, abortable);
   }
 
   public static ReplicationQueuesClient getReplicationQueuesClient(final ZooKeeperWatcher zk,

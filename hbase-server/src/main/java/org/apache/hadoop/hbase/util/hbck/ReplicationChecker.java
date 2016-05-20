@@ -38,7 +38,9 @@ import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesClientArguments;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
+import org.apache.hadoop.hbase.replication.regionserver.Replication;
 import org.apache.hadoop.hbase.util.HBaseFsck;
 import org.apache.hadoop.hbase.util.HBaseFsck.ErrorReporter;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
@@ -67,13 +69,14 @@ public class ReplicationChecker {
     try {
       this.zkw = zkw;
       this.errorReporter = errorReporter;
-      this.queuesClient = ReplicationFactory.getReplicationQueuesClient(zkw, conf, connection);
+      this.queuesClient = ReplicationFactory.getReplicationQueuesClient(
+          new ReplicationQueuesClientArguments(conf, connection, zkw));
       this.queuesClient.init();
       this.replicationPeers = ReplicationFactory.getReplicationPeers(zkw, conf, this.queuesClient,
         connection);
       this.replicationPeers.init();
       this.queueDeletor = new ReplicationQueueDeletor(zkw, conf, connection);
-    } catch (ReplicationException e) {
+    } catch (Exception e) {
       throw new IOException("failed to construct ReplicationChecker", e);
     }
 
@@ -103,7 +106,6 @@ public class ReplicationChecker {
               undeletedQueueIds.put(replicator, new ArrayList<String>());
             }
             undeletedQueueIds.get(replicator).add(queueId);
-
             String msg = "Undeleted replication queue for removed peer found: "
                 + String.format("[removedPeerId=%s, replicator=%s, queueId=%s]",
                   queueInfo.getPeerId(), replicator, queueId);
@@ -112,8 +114,8 @@ public class ReplicationChecker {
           }
         }
       }
-    } catch (KeeperException ke) {
-      throw new IOException(ke);
+    } catch (KeeperException | ReplicationException e) {
+      throw new IOException(e);
     }
 
     checkUnDeletedHFileRefsQueues(peerIds);

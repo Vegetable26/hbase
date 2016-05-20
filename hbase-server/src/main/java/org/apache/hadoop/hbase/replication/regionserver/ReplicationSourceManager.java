@@ -317,9 +317,6 @@ public class ReplicationSourceManager implements ReplicationListener {
    */
   public void join() {
     this.executor.shutdown();
-    if (this.sources.size() == 0) {
-      this.replicationQueues.removeAllQueues();
-    }
     for (ReplicationSourceInterface source : this.sources) {
       source.terminate("Region server is closing");
     }
@@ -642,7 +639,7 @@ public class ReplicationSourceManager implements ReplicationListener {
 
     @Override
     public void run() {
-      if (this.rq.isThisOurZnode(rsZnode)) {
+      if (this.rq.isThisOurRegionServer(rsZnode)) {
         return;
       }
       // Wait a bit before transferring the queues, we may be shutting down.

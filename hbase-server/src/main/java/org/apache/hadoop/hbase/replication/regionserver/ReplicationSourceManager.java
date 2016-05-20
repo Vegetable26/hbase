@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -240,19 +239,11 @@ public class ReplicationSourceManager implements ReplicationListener {
         this.replicationQueues.addPeerToHFileRefs(id);
       }
     }
-    List<String> currentReplicators = this.replicationQueues.getListOfReplicators();
-    if (currentReplicators == null || currentReplicators.size() == 0) {
-      return;
-    }
-    List<String> otherRegionServers = replicationTracker.getListOfRegionServers();
-    LOG.info("Current list of replicators: " + currentReplicators + " other RSs: "
-        + otherRegionServers);
-
-    // Look if there's anything to process after a restart
-    for (String rs : currentReplicators) {
-      if (!otherRegionServers.contains(rs)) {
-        transferQueues(rs);
-      }
+    AdoptAbandonedQueuesWorker adoptionWorker = new AdoptAbandonedQueuesWorker();
+    try {
+      this.executor.execute(adoptionWorker);
+    } catch (RejectedExecutionException ex) {
+      LOG.info("Cancelling the adoption of abandoned queues because of " + ex.getMessage());
     }
   }
 
@@ -317,9 +308,6 @@ public class ReplicationSourceManager implements ReplicationListener {
    */
   public void join() {
     this.executor.shutdown();
-    if (this.sources.size() == 0) {
-      this.replicationQueues.removeAllQueues();
-    }
     for (ReplicationSourceInterface source : this.sources) {
       source.terminate("Region server is closing");
     }
@@ -643,7 +631,7 @@ public class ReplicationSourceManager implements ReplicationListener {
 
     @Override
     public void run() {
-      if (this.rq.isThisOurZnode(rsZnode)) {
+      if (this.rq.isThisOurRegionServer(rsZnode)) {
         return;
       }
       // Wait a bit before transferring the queues, we may be shutting down.
@@ -659,7 +647,7 @@ public class ReplicationSourceManager implements ReplicationListener {
         LOG.info("Not transferring queue since we are shutting down");
         return;
       }
-      SortedMap<String, SortedSet<String>> newQueues = null;
+      Map<String, Set<String>> newQueues = null;
 
       newQueues = this.rq.claimQueues(rsZnode);
 
@@ -670,9 +658,9 @@ public class ReplicationSourceManager implements ReplicationListener {
         return;
       }
 
-      for (Map.Entry<String, SortedSet<String>> entry : newQueues.entrySet()) {
+      for (Map.Entry<String, Set<String>> entry : newQueues.entrySet()) {
         String peerId = entry.getKey();
-        SortedSet<String> walsSet = entry.getValue();
+        Set<String> walsSet = entry.getValue();
         try {
           // there is not an actual peer defined corresponding to peerId for the failover.
           ReplicationQueueInfo replicationQueueInfo = new ReplicationQueueInfo(peerId);
@@ -728,6 +716,31 @@ public class ReplicationSourceManager implements ReplicationListener {
       }
     }
   }
+
+  class AdoptAbandonedQueuesWorker extends Thread{
+
+    public AdoptAbandonedQueuesWorker() {}
+
+    @Override
+    public void run() {
+      List<String> currentReplicators = replicationQueues.getListOfReplicators();
+      if (currentReplicators == null || currentReplicators.size() == 0) {
+        return;
+      }
+      List<String> otherRegionServers = replicationTracker.getListOfRegionServers();
+      LOG.info("Current list of replicators: " + currentReplicators + " other RSs: "
+        + otherRegionServers);
+
+      // Look if there's anything to process after a restart
+      for (String rs : currentReplicators) {
+        if (!otherRegionServers.contains(rs)) {
+          transferQueues(rs);
+        }
+      }
+    }
+  }
+
+
 
   /**
    * Get the directory where wals are archived

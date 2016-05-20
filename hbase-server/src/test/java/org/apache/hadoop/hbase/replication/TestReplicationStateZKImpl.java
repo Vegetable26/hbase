@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.replication;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
 
@@ -35,6 +36,7 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.hadoop.hbase.zookeeper.ZKConfig;
@@ -48,7 +50,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-@Category(MediumTests.class)
+@Category({ReplicationTests.class, MediumTests.class})
 public class TestReplicationStateZKImpl extends TestReplicationStateBasic {
 
   private static final Log LOG = LogFactory.getLog(TestReplicationStateZKImpl.class);
@@ -91,10 +93,17 @@ public class TestReplicationStateZKImpl extends TestReplicationStateBasic {
     DummyServer ds1 = new DummyServer(server1);
     DummyServer ds2 = new DummyServer(server2);
     DummyServer ds3 = new DummyServer(server3);
-    rq1 = ReplicationFactory.getReplicationQueues(zkw, conf, ds1);
-    rq2 = ReplicationFactory.getReplicationQueues(zkw, conf, ds2);
-    rq3 = ReplicationFactory.getReplicationQueues(zkw, conf, ds3);
-    rqc = ReplicationFactory.getReplicationQueuesClient(zkw, conf, ds1);
+    try {
+      rq1 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds1, zkw));
+      rq2 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds2, zkw));
+      rq3 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds3, zkw));
+      rqc = ReplicationFactory.getReplicationQueuesClient(
+        new ReplicationQueuesClientArguments(conf, ds1, zkw));
+    } catch (Exception e) {
+      // This should not occur, because getReplicationQueues() only throws for
+      // TableBasedReplicationQueuesImpl
+      fail("ReplicationFactory.getReplicationQueues() threw an IO Exception");
+    }
     rp = ReplicationFactory.getReplicationPeers(zkw, conf, zkw);
     OUR_KEY = ZKConfig.getZooKeeperClusterKey(conf);
     rqZK = new ReplicationQueuesZKImpl(zkw, conf, ds1);

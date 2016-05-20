@@ -429,6 +429,12 @@ public final class HConstants {
   /** The catalog family */
   public static final byte [] CATALOG_FAMILY = Bytes.toBytes(CATALOG_FAMILY_STR);
 
+  /** The replication family as a string*/
+  public static final String REPLICATION_FAMILY_STR = "replication";
+
+  /** The replication family */
+  public static final byte [] REPLICATION_FAMILY = Bytes.toBytes(REPLICATION_FAMILY_STR);
+
   /** The RegionInfo qualifier as a string */
   public static final String REGIONINFO_QUALIFIER_STR = "regioninfo";
 

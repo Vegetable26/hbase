@@ -1484,6 +1484,32 @@ public class HTableDescriptor implements Comparable<HTableDescriptor> {
               .setCacheDataInL1(true)
       });
 
+  public final static byte[] REPLICATION_COL_OWNER_BYTES = Bytes.toBytes("o");
+  public final static byte[] REPLICATION_COL_QUEUE_ID_BYTES = Bytes.toBytes("q");
+
+  // TODO: Come back and tune these values
+
+  /** Table descriptor for <code>hbase:replication</code> catalog table
+   * Deprecated, use TableDescriptors#get(TableName.REPLICATION_TABLE) or
+   * Admin#getTableDescriptor(TableName.REPLICATION_TABLE) instead.
+   */
+  /** Table descriptor for replication table */
+  public static final HTableDescriptor REPLICATION_TABLEDESC = new HTableDescriptor(
+    TableName.REPLICATION_TABLE_NAME,
+    new HColumnDescriptor[] {
+      new HColumnDescriptor(HConstants.REPLICATION_FAMILY)
+        .setMaxVersions(1)
+        .setInMemory(true)
+        .setBlocksize(8 * 1024)
+        .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
+        // TODO: Figure out which bloom filter to actually use here
+        .setBloomFilterType(BloomType.ROW)
+          // Enable cache of data blocks in L1 if more than one caching tier deployed:
+          // e.g. if using CombinedBlockCache (BucketCache).
+        .setCacheDataInL1(true),
+    });
+
+
   @Deprecated
   public HTableDescriptor setOwner(User owner) {
     return setOwnerString(owner != null ? owner.getShortName() : null);

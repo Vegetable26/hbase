@@ -806,7 +806,6 @@ public class HMaster extends HRegionServer implements MasterServices {
       }
     }
 
-    status.markComplete("Initialization successful");
     LOG.info("Master has completed initialization");
     configurationManager.registerObserver(this.balancer);
 

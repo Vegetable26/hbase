@@ -19,8 +19,8 @@
 package org.apache.hadoop.hbase.replication;
 
 import java.util.List;
-import java.util.SortedMap;
-import java.util.SortedSet;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 
@@ -83,23 +83,23 @@ public interface ReplicationQueues {
   /**
    * Get a list of all WALs in the given queue.
    * @param queueId a String that identifies the queue
-   * @return a list of WALs, null if this region server is dead and has no outstanding queues
+   * @return a list of WALs, null if no such queue exists for this server
    */
   List<String> getLogsInQueue(String queueId);
 
   /**
    * Get a list of all queues for this region server.
-   * @return a list of queueIds, null if this region server is dead and has no outstanding queues
+   * @return a list of queueIds, an empty list if this region server is dead and has no outstanding queues
    */
   List<String> getAllQueues();
 
   /**
    * Take ownership for the set of queues belonging to a dead region server.
    * @param regionserver the id of the dead region server
-   * @return A SortedMap of the queues that have been claimed, including a SortedSet of WALs in
+   * @return A Map of the queues that have been claimed, including a Set of WALs in
    *         each queue. Returns an empty map if no queues were failed-over.
    */
-  SortedMap<String, SortedSet<String>> claimQueues(String regionserver);
+  Map<String, Set<String>> claimQueues(String regionserver);
 
   /**
    * Get a list of all region servers that have outstanding replication queues. These servers could
@@ -110,10 +110,10 @@ public interface ReplicationQueues {
 
   /**
    * Checks if the provided znode is the same as this region server's
-   * @param znode to check
+   * @param regionserver the id of the region server
    * @return if this is this rs's znode
    */
-  boolean isThisOurZnode(String znode);
+  boolean isThisOurRegionServer(String regionserver);
 
   /**
    * Add a peer to hfile reference queue if peer does not exist.

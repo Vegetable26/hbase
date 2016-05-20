@@ -57,6 +57,7 @@ import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
 import org.apache.hadoop.hbase.replication.ReplicationTracker;
 import org.apache.hadoop.hbase.replication.master.ReplicationHFileCleaner;
 import org.apache.hadoop.hbase.replication.master.ReplicationLogCleaner;
@@ -131,7 +132,8 @@ public class Replication extends WALActionsListener.Base implements
     if (replication) {
       try {
         this.replicationQueues =
-            ReplicationFactory.getReplicationQueues(server.getZooKeeper(), this.conf, this.server);
+            ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, this.server,
+              server.getZooKeeper()));
         this.replicationQueues.init(this.server.getServerName().toString());
         this.replicationPeers =
             ReplicationFactory.getReplicationPeers(server.getZooKeeper(), this.conf, this.server);
@@ -139,7 +141,7 @@ public class Replication extends WALActionsListener.Base implements
         this.replicationTracker =
             ReplicationFactory.getReplicationTracker(server.getZooKeeper(), this.replicationPeers,
               this.conf, this.server, this.server);
-      } catch (ReplicationException e) {
+      } catch (Exception e) {
         throw new IOException("Failed replication handler create", e);
       }
       UUID clusterId = null;

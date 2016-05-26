@@ -34,17 +34,16 @@ import java.util.*;
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
-    // TODO: Consider moving this name to some config
-    public static final String REPLICATION_TABLE_NAME = "replication";
-
     private Connection connection = null;
     private Admin admin = null;
     private Table replicationTable = null;
     private Abortable abort = null;
     private String serverName = null;
-    private final byte[] CF = Bytes.toBytes("cf");
-    private final byte[] OWNER = Bytes.toBytes("owner");
-    private final byte[] QUEUE_ID = Bytes.toBytes("queueId");
+
+    private final byte[] CF = HConstants.REPLICATION_FAMILY;
+    private final byte[] OWNER = HTableDescriptor.REPLICATION_COL_OWNER_BYTES;
+    private final byte[] QUEUE_ID = HTableDescriptor.REPLICATION_COL_QUEUE_ID_BYTES;
+
     private Map<String, byte[]> queueIdToRowKey = new HashMap<String, byte[]>();
 
     // TODO: Used for ReplicationFactory reflection construction. Feels kind of convoluted
@@ -56,8 +55,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         this.connection = ConnectionFactory.createConnection(conf);
         this.admin = connection.getAdmin();
         this.abort = abort;
-        TableName replicationTableName = TableName.valueOf(NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR,
-                REPLICATION_TABLE_NAME);
+        TableName replicationTableName = TableName.REPLICATION_TABLE_NAME;
         replicationTable = createAndGetTable(replicationTableName);
     }
 
@@ -254,8 +252,8 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         HTableDescriptor tableDescriptor = new HTableDescriptor(tableName);
         // generate the replication table for the entire cluster if it does not exist
         if (!admin.tableExists(tableName)) {
-            tableDescriptor.addFamily(new HColumnDescriptor("cf"));
-            admin.createTable(tableDescriptor);
+            tableDescriptor.addFamily(new HColumnDescriptor(CF));
+            admin.createTable(HTableDescriptor.REPLICATION_TABLEDESC);
         }
         return connection.getTable(tableName);
     }

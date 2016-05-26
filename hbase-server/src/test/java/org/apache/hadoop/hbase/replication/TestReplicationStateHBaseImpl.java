@@ -74,8 +74,7 @@ public class TestReplicationStateHBaseImpl {
             rqH = ReplicationFactory.getReplicationQueues(null, conf, ds);
             rqH.init(server1);
             // Check that the proper System Tables have been generated
-            Table replicationTable = connection.getTable(TableName.valueOf(NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR,
-                    ReplicationQueuesHBaseImpl.REPLICATION_TABLE_NAME));
+            Table replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
             assertTrue(replicationTable.getName().isSystemTable());
 
         } catch (IOException e) {

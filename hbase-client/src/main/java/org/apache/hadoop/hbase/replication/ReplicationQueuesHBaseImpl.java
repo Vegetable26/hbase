@@ -42,7 +42,9 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private Abortable abort = null;
     private String serverName = null;
     private final byte[] CF = Bytes.toBytes("cf");
-    private Map<String, String> queueIdToRowKey = new HashMap<String, String>();
+    private final byte[] OWNER = Bytes.toBytes("owner");
+    private final byte[] QUEUE_ID = Bytes.toBytes("queueId");
+    private Map<String, byte[]> queueIdToRowKey = new HashMap<String, byte[]>();
 
     public ReplicationQueuesHBaseImpl(Configuration conf, Abortable abort) throws IOException {
         this.connection = ConnectionFactory.createConnection(conf);
@@ -64,8 +66,8 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             abort.abort("Could remove non-existent queueId queueId=" + queueId, new ReplicationException());
             return;
         }
-        String rowKey = queueIdToRowKey.get(queueId);
-        Delete deleteQueue = new Delete(Bytes.toBytes(rowKey));
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        Delete deleteQueue = new Delete(rowKey);
         try {
             replicationTable.delete(deleteQueue);
             queueIdToRowKey.remove(queueId);
@@ -81,10 +83,10 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             try {
                 // Each queue will have an Owner, QueueId, and a collection of [WAL:offset] key values.
                 Put putNewQueue = new Put(Bytes.toBytes(buildServerQueueName(queueId)));
-                putNewQueue.addColumn(CF, Bytes.toBytes("Owner"), Bytes.toBytes(serverName));
-                putNewQueue.addColumn(CF, Bytes.toBytes("QueueId"), Bytes.toBytes(queueId));
+                putNewQueue.addColumn(CF, OWNER, Bytes.toBytes(serverName));
+                putNewQueue.addColumn(CF, QUEUE_ID, Bytes.toBytes(queueId));
                 replicationTable.put(putNewQueue);
-                queueIdToRowKey.put(queueId, buildServerQueueName(queueId));
+                queueIdToRowKey.put(queueId, Bytes.toBytes(buildServerQueueName(queueId)));
             } catch (IOException e) {
                 throw new ReplicationException("Could not add queue queueId=" + queueId);
             }
@@ -100,8 +102,8 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
                     new ReplicationException());
             return;
         }
-        String rowKey = queueIdToRowKey.get(queueId);
-        Delete delete = new Delete(Bytes.toBytes(rowKey));
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        Delete delete = new Delete(rowKey);
         delete.addColumns(CF, Bytes.toBytes(filename));
         try {
             replicationTable.delete(delete);
@@ -117,9 +119,9 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
                     new ReplicationException());
             return;
         }
-        String rowKey = queueIdToRowKey.get(queueId);
+        byte[] rowKey = queueIdToRowKey.get(queueId);
         try {
-            Put walAndOffset = new Put(Bytes.toBytes(rowKey));
+            Put walAndOffset = new Put(rowKey);
             walAndOffset.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(position));
             replicationTable.put(walAndOffset);
         } catch (IOException e) {
@@ -134,8 +136,8 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             throw new ReplicationException("Could not get position in log for non-existent queue queueId="
                     + queueId + ", filename=" + filename);
         }
-        String rowKey = queueIdToRowKey.get(queueId);
-        Get getOffset = new Get(Bytes.toBytes(rowKey));
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        Get getOffset = new Get(rowKey);
         getOffset.addColumn(CF, Bytes.toBytes(filename));
         try {
             Result result = replicationTable.get(getOffset);
@@ -165,9 +167,9 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             abort.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
             return null;
         }
-        String rowKey = queueIdToRowKey.get(queueId);
+        byte[] rowKey = queueIdToRowKey.get(queueId);
         List<String> logs = new ArrayList<String>();
-        Get getQueue = new Get(Bytes.toBytes(rowKey));
+        Get getQueue = new Get(rowKey);
         try {
             Result queue = replicationTable.get(getQueue);
             if (queue.isEmpty()) {
@@ -175,7 +177,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             }
             Map<byte[], byte[]> familyMap = queue.getFamilyMap(CF);
             for(byte[] cQualifier : familyMap.keySet()) {
-                if (Bytes.toString(cQualifier).equals("Owner") || Bytes.toString(cQualifier).equals("QueueId")) {
+                if (cQualifier.equals(OWNER) || cQualifier.equals(QUEUE_ID)) {
                     continue;
                 }
                 logs.add(Bytes.toString(cQualifier));
@@ -261,13 +263,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private List<String> getQueuesBelongingToServer(String server) throws IOException{
         List<String> queues = new ArrayList<String>();
         Scan scan = new Scan();
-        SingleColumnValueFilter filterMyQueues = new SingleColumnValueFilter(CF, Bytes.toBytes("owner"),
+        SingleColumnValueFilter filterMyQueues = new SingleColumnValueFilter(CF, OWNER,
                 CompareFilter.CompareOp.EQUAL, Bytes.toBytes(server));
         scan.setFilter(filterMyQueues);
-        scan.addColumn(CF, Bytes.toBytes("QueueId"));
+        scan.addColumn(CF, QUEUE_ID);
         ResultScanner results = replicationTable.getScanner(scan);
         for (Result result : results) {
-            queues.add(Bytes.toString(result.getValue(CF, Bytes.toBytes("QueueId"))));
+            queues.add(Bytes.toString(result.getValue(CF, QUEUE_ID)));
         }
         return queues;
     }

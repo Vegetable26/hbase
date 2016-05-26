@@ -61,7 +61,8 @@ public class TestReplicationStateHBaseImpl {
         utility = new HBaseTestingUtility();
         cluster = utility.startMiniCluster();
         conf = utility.getConfiguration();
-        conf.set("hbase.region.replica.replication.WALTrackingMode","HBase");
+        conf.setClass("hbase.region.replica.replication.ReplicationQueuesType", ReplicationQueuesHBaseImpl.class,
+                ReplicationQueues.class);
         connection = ConnectionFactory.createConnection(conf);
 
     }
@@ -130,7 +131,7 @@ public class TestReplicationStateHBaseImpl {
             }
             // Test removing logs
             rqH.removeLog("Queue1", "WALLogFile1.1");
-            assertEquals(rqH.getLogsInQueue("Queue1").size(), 3);
+            assertEquals(3, rqH.getLogsInQueue("Queue1").size());
             // Test removing queues
             rqH.removeQueue("Queue2");
             assertNull(rqH.getLogsInQueue("Queue2"));

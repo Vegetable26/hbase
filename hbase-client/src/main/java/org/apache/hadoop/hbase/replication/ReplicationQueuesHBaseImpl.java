@@ -26,6 +26,7 @@ import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
 import java.io.IOException;
 import java.util.*;
@@ -45,6 +46,11 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private final byte[] OWNER = Bytes.toBytes("owner");
     private final byte[] QUEUE_ID = Bytes.toBytes("queueId");
     private Map<String, byte[]> queueIdToRowKey = new HashMap<String, byte[]>();
+
+    // TODO: Used for ReplicationFactory reflection construction. Feels kind of convoluted
+    public ReplicationQueuesHBaseImpl(ZooKeeperWatcher zk, Configuration conf, Abortable abort) throws IOException{
+        this(conf, abort);
+    }
 
     public ReplicationQueuesHBaseImpl(Configuration conf, Abortable abort) throws IOException {
         this.connection = ConnectionFactory.createConnection(conf);
@@ -177,7 +183,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             }
             Map<byte[], byte[]> familyMap = queue.getFamilyMap(CF);
             for(byte[] cQualifier : familyMap.keySet()) {
-                if (cQualifier.equals(OWNER) || cQualifier.equals(QUEUE_ID)) {
+                if (Arrays.equals(cQualifier, OWNER) || Arrays.equals(cQualifier, QUEUE_ID)) {
                     continue;
                 }
                 logs.add(Bytes.toString(cQualifier));

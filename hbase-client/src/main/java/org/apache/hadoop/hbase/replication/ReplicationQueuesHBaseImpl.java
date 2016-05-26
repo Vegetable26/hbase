@@ -55,8 +55,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         this.connection = ConnectionFactory.createConnection(conf);
         this.admin = connection.getAdmin();
         this.abort = abort;
-        TableName replicationTableName = TableName.REPLICATION_TABLE_NAME;
-        replicationTable = createAndGetTable(replicationTableName);
+        replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
     }
 
     @Override
@@ -249,12 +248,6 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
      * @throws IOException
      */
     private Table createAndGetTable(TableName tableName) throws IOException {
-        HTableDescriptor tableDescriptor = new HTableDescriptor(tableName);
-        // generate the replication table for the entire cluster if it does not exist
-        if (!admin.tableExists(tableName)) {
-            tableDescriptor.addFamily(new HColumnDescriptor(CF));
-            admin.createTable(HTableDescriptor.REPLICATION_TABLEDESC);
-        }
         return connection.getTable(tableName);
     }
 

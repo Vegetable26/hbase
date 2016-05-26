@@ -806,7 +806,9 @@ public class HMaster extends HRegionServer implements MasterServices {
       }
     }
 
-    status.markComplete("Initialization successful");
+    status.setStatus("Building replication table");
+    assignReplication();
+
     LOG.info("Master has completed initialization");
     configurationManager.registerObserver(this.balancer);
 
@@ -968,6 +970,22 @@ public class HMaster extends HRegionServer implements MasterServices {
     LOG.info("hbase:meta with replicaId " + replicaId + " assigned=" + assigned + ", location="
       + metaTableLocator.getMetaRegionLocation(this.getZooKeeper(), replicaId));
     status.setStatus("META assigned.");
+  }
+
+  private void assignReplication() throws IOException, InterruptedException{
+    HRegionInfo[] newRegions = new HRegionInfo[]{
+      new HRegionInfo(HTableDescriptor.REPLICATION_TABLEDESC.getTableName(), null, null)};
+
+    this.getMasterProcedureExecutor()
+      .submitProcedure(new CreateTableProcedure(
+        this.getMasterProcedureExecutor().getEnvironment(),
+        HTableDescriptor.REPLICATION_TABLEDESC,
+        newRegions));
+
+    while (!this.getConnection().getAdmin().tableExists(TableName.REPLICATION_TABLE_NAME)) {
+      // TODO: Read this from some config
+      Thread.sleep(100);
+    }
   }
 
   void initClusterSchemaService() throws IOException, InterruptedException {

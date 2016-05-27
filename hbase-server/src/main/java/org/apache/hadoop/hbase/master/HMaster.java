@@ -974,18 +974,21 @@ public class HMaster extends HRegionServer implements MasterServices {
 
   private void assignReplication() throws IOException, InterruptedException{
 
-    HRegionInfo[] newRegions = new HRegionInfo[]{
-      new HRegionInfo(HTableDescriptor.REPLICATION_TABLEDESC.getTableName(), null, null)};
+    // TODO: Is this the best way to check if a table exists? or should I rely on TableStateManager...
 
-    this.getMasterProcedureExecutor()
-      .submitProcedure(new CreateTableProcedure(
-        this.getMasterProcedureExecutor().getEnvironment(),
-        HTableDescriptor.REPLICATION_TABLEDESC,
-        newRegions));
+    if (!this.getConnection().getAdmin().tableExists(TableName.REPLICATION_TABLE_NAME)) {
+      HRegionInfo[] newRegions = new HRegionInfo[]{
+        new HRegionInfo(HTableDescriptor.REPLICATION_TABLEDESC.getTableName(), null, null)};
 
-    while (!this.getConnection().getAdmin().tableExists(TableName.REPLICATION_TABLE_NAME)) {
-      // TODO: Read this from some config
-      Thread.sleep(100);
+      this.getMasterProcedureExecutor()
+        .submitProcedure(new CreateTableProcedure(
+          this.getMasterProcedureExecutor().getEnvironment(),
+          HTableDescriptor.REPLICATION_TABLEDESC,
+          newRegions));
+      System.out.println("Creating new replication table");
+      while (!this.getConnection().getAdmin().tableExists(TableName.REPLICATION_TABLE_NAME)) {
+        Thread.sleep(100);
+      }
     }
   }
 

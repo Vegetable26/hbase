@@ -31,6 +31,7 @@ import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
@@ -44,7 +45,11 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private final byte[] OWNER = HTableDescriptor.REPLICATION_COL_OWNER_BYTES;
     private final byte[] QUEUE_ID = HTableDescriptor.REPLICATION_COL_QUEUE_ID_BYTES;
 
-    private Map<String, byte[]> queueIdToRowKey = new HashMap<String, byte[]>();
+     /*
+      * Each ReplicationSource or queue should only own one entry in this map. So concurrent accesses to
+      * this class should be safe.
+      */
+    private Map<String, byte[]> queueIdToRowKey = new ConcurrentHashMap<String, byte[]>();
 
     public ReplicationQueuesHBaseImpl(ReplicationQueuesArguments args) throws IOException {
         this(args.getConf(), args.getAbort());
@@ -63,11 +68,10 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void removeQueue(String queueId) {
-        if (!queueIdToRowKey.containsKey(queueId)) {
-            abort.abort("Could remove non-existent queueId queueId=" + queueId, new ReplicationException());
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        if (rowKey == null) {
             return;
         }
-        byte[] rowKey = queueIdToRowKey.get(queueId);
         Delete deleteQueue = new Delete(rowKey);
         try {
             replicationTable.delete(deleteQueue);
@@ -98,12 +102,12 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void removeLog(String queueId, String filename) {
-        if (!queueIdToRowKey.containsKey(queueId)) {
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        if (rowKey == null) {
             abort.abort("Could not remove non-existent log from queueId=" + queueId + ", filename=" + filename,
-                    new ReplicationException());
+              new ReplicationException());
             return;
         }
-        byte[] rowKey = queueIdToRowKey.get(queueId);
         Delete delete = new Delete(rowKey);
         delete.addColumns(CF, Bytes.toBytes(filename));
         try {
@@ -115,12 +119,12 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void setLogPosition(String queueId, String filename, long position) {
-        if (!queueIdToRowKey.containsKey(queueId)) {
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        if (rowKey == null) {
             abort.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" + filename,
-                    new ReplicationException());
+              new ReplicationException());
             return;
         }
-        byte[] rowKey = queueIdToRowKey.get(queueId);
         try {
             Put walAndOffset = new Put(rowKey);
             walAndOffset.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(position));
@@ -133,11 +137,11 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public long getLogPosition(String queueId, String filename) throws ReplicationException {
-        if (!queueIdToRowKey.containsKey(queueId)) {
-            throw new ReplicationException("Could not get position in log for non-existent queue queueId="
-                    + queueId + ", filename=" + filename);
-        }
         byte[] rowKey = queueIdToRowKey.get(queueId);
+        if (rowKey == null) {
+            throw new ReplicationException("Could not get position in log for non-existent queue queueId="
+              + queueId + ", filename=" + filename);
+        }
         Get getOffset = new Get(rowKey);
         getOffset.addColumn(CF, Bytes.toBytes(filename));
         try {
@@ -164,11 +168,11 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public List<String> getLogsInQueue(String queueId) {
-        if (!queueIdToRowKey.containsKey(queueId)) {
+        byte[] rowKey = queueIdToRowKey.get(queueId);
+        if (rowKey == null) {
             abort.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
             return null;
         }
-        byte[] rowKey = queueIdToRowKey.get(queueId);
         List<String> logs = new ArrayList<String>();
         Get getQueue = new Get(rowKey);
         try {

@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
@@ -111,12 +112,18 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             // Check if the queue meta information (Owner, QueueId) is currently stored in the Replication Table
             if (this.queueIdToRowKey(queueId) == null) {
                 // Each queue will have an Owner, QueueId, and a collection of [WAL:offset] key values.
+
+                System.out.println("Inserting new queue " + queueId);
+
                 Put putNewQueue = new Put(Bytes.toBytes(buildServerQueueName(queueId)));
                 putNewQueue.addColumn(CF, OWNER, Bytes.toBytes(serverName));
                 putNewQueue.addColumn(CF, QUEUE_ID, Bytes.toBytes(queueId));
                 putNewQueue.addColumn(CF, Bytes.toBytes(filename), INITIAL_OFFSET);
                 replicationTable.put(putNewQueue);
             } else {
+
+                System.out.println("Found old queue " + queueId);
+
                 // Otherwise simply add the new log and offset as a new column
                 Put putNewLog = new Put(this.queueIdToRowKey(queueId));
                 putNewLog.addColumn(CF, Bytes.toBytes(filename), INITIAL_OFFSET);
@@ -201,13 +208,23 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public List<String> getLogsInQueue(String queueId) {
-        List<String> logs = new ArrayList<String>();
         try {
             byte[] rowKey = this.queueIdToRowKey(queueId);
             if (rowKey == null) {
-                abortable.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
+                abortable.abort("Could not get logs for queueId=" + queueId,
+                  new ReplicationException("Rowkey not found for queueId=" + queueId));
                 return null;
             }
+            return getLogsInQueue(rowKey);
+        } catch (IOException e) {
+            abortable.abort("Could not get logs for queueId=" + queueId, e);
+            return null;
+        }
+    }
+
+    private List<String> getLogsInQueue(byte[] rowKey) {
+        List<String> logs = new ArrayList<String>();
+        try {
             Get getQueue = new Get(rowKey);
             Result queue = replicationTable.get(getQueue);
             if (queue.isEmpty()) {
@@ -221,6 +238,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
                 logs.add(Bytes.toString(cQualifier));
             }
         } catch (IOException e) {
+            abortable.abort("Could not get logs in queue", e);
             return null;
         }
         return logs;
@@ -244,25 +262,27 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     @Override
     public SortedMap<String, SortedSet<String>> claimQueues(String regionserver) {
         SortedMap<String, SortedSet<String>> queues = new TreeMap<String, SortedSet<String>>();
-
         try {
             ResultScanner queuesToClaim = this.getQueuesBelongingToServer(regionserver);
             for (Result queue : queuesToClaim) {
                 if (claimQueueSuccess(queue, regionserver)) {
-                    System.out.println("Successfully claimed " + Bytes.toString(queue.getRow()));
-                    // TODO: Copy in the logs to the queue
+                    // TODO: Check whether the peer still exists before adding in the log
+                    if (peerExists()) {
+                        SortedSet<String> sortedLogs = new TreeSet<String>();
+                        List<String> logs = getLogsInQueue(queue.getRow());
+                        for (String log : logs) {
+                            sortedLogs.add(log);
+                        }
+                        String newQueueId = buildClaimedQueueId(Bytes.toString(queue.getValue(CF, QUEUE_ID)),
+                          regionserver);
+                        queues.put(newQueueId, sortedLogs);
+                    }
                 }
-
             }
-
         } catch (IOException e) {
-
+            abortable.abort("Received an IOException attempting to claimQueues regionserver=" + regionserver,
+              new ReplicationException());
         }
-
-
-
-
-
         return queues;
     }
 
@@ -345,6 +365,18 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     }
 
     /**
+     * See the naming convention used by ReplicationQueuesZKImpl:
+     * We add the name of the recovered RS to the new znode, we can even do that for queues that were recovered 10
+     * times giving a znode like number-startcode-number-otherstartcode-number-anotherstartcode-etc
+     * @param originalQueueId the queue's original identifier
+     * @param originalServer the name of the server that used to own the queue
+     * @return the queue's new identifier post-adoption
+     */
+    private String buildClaimedQueueId(String originalQueueId, String originalServer) {
+        return originalQueueId + "-" + originalServer;
+    }
+
+    /**
      * Get the Queues belonging to the named server from the ReplicationTable.
      * @param server name of the server
      * @return a scanner over the Queues belonging to the server with fields "Owner" and "QueueId"
@@ -355,6 +387,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         SingleColumnValueFilter filterMyQueues = new SingleColumnValueFilter(CF, OWNER,
                 CompareFilter.CompareOp.EQUAL, Bytes.toBytes(server));
         scan.setFilter(filterMyQueues);
+        scan.addColumn(CF, OWNER);
         scan.addColumn(CF, QUEUE_ID);
         ResultScanner results = replicationTable.getScanner(scan);
         return results;
@@ -390,23 +423,31 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         return (result == null) ? null : result.getRow();
     }
 
-    private boolean claimQueueSuccess (Result queue, String originalServer ) throws IOException{
+    private boolean claimQueueSuccess (Result queue, String originalServer) throws IOException{
         Put putNewQueueOwner = new Put(queue.getRow());
         putNewQueueOwner.addColumn(CF, OWNER, Bytes.toBytes(serverName));
 
-        // See the naming convention used by ReplicationQueuesZKImpl:
-        // We add the name of the recovered RS to the new znode, we can even
-        // do that for queues that were recovered 10 times giving a znode like
-        // number-startcode-number-otherstartcode-number-anotherstartcode-etc
-        String newQueueId = Bytes.toString(queue.getValue(CF, QUEUE_ID)) + originalServer;
+        String newQueueId = buildClaimedQueueId(Bytes.toString(queue.getValue(CF, QUEUE_ID)), originalServer);
         Put putNewQueueId = new Put(queue.getRow());
         putNewQueueId.addColumn(CF, QUEUE_ID, Bytes.toBytes(newQueueId));
 
-        RowMutations claimAndRenameQueue = new RowMutations();
+        RowMutations claimAndRenameQueue = new RowMutations(queue.getRow());
         claimAndRenameQueue.add(putNewQueueOwner);
         claimAndRenameQueue.add(putNewQueueId);
 
-        return replicationTable.checkAndMutate(queue.getRow(), CF, OWNER, CompareFilter.CompareOp.EQUAL,
+        // Attempt to claim ownership for this queue by checking if the current OWNER is the original server. If it not
+        // then another RS has already claimed it. If it is we set ourselves as the new owner and update the queue's id
+        boolean success = replicationTable.checkAndMutate(queue.getRow(), CF, OWNER, CompareFilter.CompareOp.EQUAL,
           Bytes.toBytes(originalServer), claimAndRenameQueue);
+        return success;
+    }
+
+    /**
+     *
+     * @return
+     */
+    private boolean peerExists() {
+        // TODO: Implement
+        return true;
     }
 }

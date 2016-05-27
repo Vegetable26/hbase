@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hbase.replication;
 
+import junit.framework.Assert;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -44,6 +45,9 @@ import org.junit.experimental.categories.Category;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.SortedSet;
 
 import static junit.framework.TestCase.assertNull;
 import static org.junit.Assert.assertEquals;
@@ -57,12 +61,16 @@ public class TestReplicationStateHBaseImpl {
 
     private static Configuration conf;
     private static HBaseTestingUtility utility;
-    private static Connection connection;
-    private static ReplicationQueues rqH;
     private static ZooKeeperWatcher zkw;
     private static String replicationZNode;
 
-    private final String server1 = ServerName.valueOf("hostname1.example.org", 1234, -1L).toString();
+    private static ReplicationQueues rq1;
+    private static ReplicationQueues rq2;
+    private static ReplicationQueues rq3;
+
+    private static final String server1 = ServerName.valueOf("hostname1.example.org", 1234, -1L).toString();
+    private static final String server2 = ServerName.valueOf("hostname2.example.org", 1234, -1L).toString();
+    private static final String server3 = ServerName.valueOf("hostname3.example.org", 1234, -1L).toString();
 
     @BeforeClass
     public static void setUpBeforeClass() throws Exception {
@@ -71,105 +79,191 @@ public class TestReplicationStateHBaseImpl {
         conf = utility.getConfiguration();
         conf.setClass("hbase.region.replica.replication.ReplicationQueuesType", ReplicationQueuesHBaseImpl.class,
                 ReplicationQueues.class);
-        connection = ConnectionFactory.createConnection(conf);
         zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
         String replicationZNodeName = conf.get("zookeeper.znode.replication", "replication");
         replicationZNode = ZKUtil.joinZNode(zkw.baseZNode, replicationZNodeName);
+
+        try {
+            DummyServer ds1 = new DummyServer(server1);
+            rq1 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds1));
+            rq1.init(server1);
+            DummyServer ds2 = new DummyServer(server2);
+            rq2 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds2));
+            rq2.init(server2);
+            DummyServer ds3 = new DummyServer(server3);
+            rq3 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds3));
+            rq3.init(server3);
+        } catch (Exception e) {
+            e.printStackTrace();
+            fail("testReplicationStateHBaseConstruction received an Exception");
+        }
+
     }
 
     @Test
     public void checkNamingSchema() throws Exception{
         DummyServer ds = new DummyServer(server1);
-        rqH.init(server1);
-        assertTrue(rqH.isThisOurRegionServer(server1));
-        assertTrue(!rqH.isThisOurRegionServer(server1 + "a"));
-        assertTrue(!rqH.isThisOurRegionServer(null));
+        rq1.init(server1);
+        assertTrue(rq1.isThisOurRegionServer(server1));
+        assertTrue(!rq1.isThisOurRegionServer(server1 + "a"));
+        assertTrue(!rq1.isThisOurRegionServer(null));
+        rq1.removeAllQueues();
     }
 
     @Test
-    public void testReplicationStateHBase () {
-        DummyServer ds = new DummyServer(server1);
-        try {
-            rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds, zkw));
-            rqH.init(server1);
-            // Check that the proper System Tables have been generated
-            Table replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
-            assertTrue(replicationTable.getName().isSystemTable());
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            fail("testReplicationStateHBaseConstruction received an Exception");
-        }
+    public void TestSingleReplicationQueuesHBaseImpl () {
         try {
             // Test adding in WAL files
-            assertEquals(0, rqH.getAllQueues().size());
-            rqH.addLog("Queue1", "WALLogFile1.1");
-            assertEquals(1, rqH.getAllQueues().size());
-            rqH.addLog("Queue1", "WALLogFile1.2");
-            rqH.addLog("Queue1", "WALLogFile1.3");
-            rqH.addLog("Queue1", "WALLogFile1.4");
-            rqH.addLog("Queue2", "WALLogFile2.1");
-            rqH.addLog("Queue3", "WALLogFile3.1");
-            assertEquals(3, rqH.getAllQueues().size());
-            assertEquals(4, rqH.getLogsInQueue("Queue1").size());
-            assertEquals(1, rqH.getLogsInQueue("Queue2").size());
-            assertEquals(1, rqH.getLogsInQueue("Queue3").size());
-            // Make sure that getting a log from a non-existent queue triggers an abort
-            assertEquals(0, ds.getAbortCount());
-            assertNull(rqH.getLogsInQueue("Queue4"));
-            assertEquals(1, ds.getAbortCount());
+            assertEquals(0, rq1.getAllQueues().size());
+            rq1.addLog("Queue1", "WALLogFile1.1");
+            assertEquals(1, rq1.getAllQueues().size());
+            rq1.addLog("Queue1", "WALLogFile1.2");
+            rq1.addLog("Queue1", "WALLogFile1.3");
+            rq1.addLog("Queue1", "WALLogFile1.4");
+            rq1.addLog("Queue2", "WALLogFile2.1");
+            rq1.addLog("Queue3", "WALLogFile3.1");
+            assertEquals(3, rq1.getAllQueues().size());
+            assertEquals(4, rq1.getLogsInQueue("Queue1").size());
+            assertEquals(1, rq1.getLogsInQueue("Queue2").size());
+            assertEquals(1, rq1.getLogsInQueue("Queue3").size());
+            // TODO: Or should we throw an error
+            assertNull(rq1.getLogsInQueue("Queue4"));
         } catch (ReplicationException e) {
             e.printStackTrace();
             fail("testAddLog received a ReplicationException");
         }
         try {
-
             // Test updating the log positions
-            assertEquals(0L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
-            rqH.setLogPosition("Queue1", "WALLogFile1.1", 123L);
-            assertEquals(123L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
-            rqH.setLogPosition("Queue1", "WALLogFile1.1", 123456789L);
-            assertEquals(123456789L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
-            rqH.setLogPosition("Queue2", "WALLogFile2.1", 242L);
-            assertEquals(242L, rqH.getLogPosition("Queue2", "WALLogFile2.1"));
-            rqH.setLogPosition("Queue3", "WALLogFile3.1", 243L);
-            assertEquals(243L, rqH.getLogPosition("Queue3", "WALLogFile3.1"));
-
-            // Test if writing to non-existent queue results in abort
-            assertEquals(1, ds.getAbortCount());
-            rqH.setLogPosition("NotHereQueue", "WALLogFile3.1", 243L);
-            assertEquals(2, ds.getAbortCount());
-            rqH.setLogPosition("NotHereQueue", "NotHereFile", 243L);
-            assertEquals(3, ds.getAbortCount());
-            rqH.setLogPosition("Queue1", "NotHereFile", 243l);
-            assertEquals(4, ds.getAbortCount());
+            assertEquals(0l, rq1.getLogPosition("Queue1", "WALLogFile1.1"));
+            rq1.setLogPosition("Queue1", "WALLogFile1.1", 123l);
+            assertEquals(123l, rq1.getLogPosition("Queue1", "WALLogFile1.1"));
+            rq1.setLogPosition("Queue1", "WALLogFile1.1", 123456789l);
+            assertEquals(123456789l, rq1.getLogPosition("Queue1", "WALLogFile1.1"));
+            rq1.setLogPosition("Queue2", "WALLogFile2.1", 242l);
+            assertEquals(242l, rq1.getLogPosition("Queue2", "WALLogFile2.1"));
+            rq1.setLogPosition("Queue3", "WALLogFile3.1", 243l);
+            assertEquals(243l, rq1.getLogPosition("Queue3", "WALLogFile3.1"));
 
             // Test reading log positions for non-existent queues and WAL's
             try {
-                rqH.getLogPosition("Queue1", "NotHereWAL");
+                rq1.getLogPosition("Queue1", "NotHereWAL");
                 fail("Replication queue should have thrown a ReplicationException for reading from a non-existent WAL");
             } catch (ReplicationException e) {
             }
             try {
-                rqH.getLogPosition("NotHereQueue", "NotHereWAL");
+                rq1.getLogPosition("NotHereQueue", "NotHereWAL");
                 fail("Replication queue should have thrown a ReplicationException for reading from a non-existent queue");
             } catch (ReplicationException e) {
             }
             // Test removing logs
-            rqH.removeLog("Queue1", "WALLogFile1.1");
-            assertEquals(3, rqH.getLogsInQueue("Queue1").size());
+            rq1.removeLog("Queue1", "WALLogFile1.1");
+            assertEquals(3, rq1.getLogsInQueue("Queue1").size());
             // Test removing queues
-            rqH.removeQueue("Queue2");
-            assertNull(rqH.getLogsInQueue("Queue2"));
-            assertEquals(2, rqH.getAllQueues().size());
+            rq1.removeQueue("Queue2");
+            assertNull(rq1.getLogsInQueue("Queue2"));
+            assertEquals(2, rq1.getAllQueues().size());
             // Test removing all queues for a Region Server
-            rqH.removeAllQueues();
-            assertEquals(0, rqH.getAllQueues().size());
-            assertNull(rqH.getLogsInQueue("Queue1"));
+            rq1.removeAllQueues();
+            assertEquals(0, rq1.getAllQueues().size());
+            assertNull(rq1.getLogsInQueue("Queue1"));
         } catch (ReplicationException e) {
             e.printStackTrace();
             fail("testAddLog received a ReplicationException");
+        } finally {
+            rq1.removeAllQueues();
+            assertEquals(0, rq1.getAllQueues().size());
         }
+    }
+
+    @Test
+    public void TestMultipleReplicationQueuesHBaseImpl () {
+        assertEquals(0, rq1.getAllQueues().size());
+        try {
+            // Test adding in WAL files
+            rq1.addLog("Queue1", "WALLogFile1.1");
+            rq1.addLog("Queue1", "WALLogFile1.2");
+            rq1.addLog("Queue1", "WALLogFile1.3");
+            rq1.addLog("Queue1", "WALLogFile1.4");
+            rq1.addLog("Queue2", "WALLogFile2.1");
+            rq1.addLog("Queue3", "WALLogFile3.1");
+            rq2.addLog("Queue1", "WALLogFile1.1");
+            rq2.addLog("Queue1", "WALLogFile1.2");
+            rq2.addLog("Queue2", "WALLogFile2.1");
+            rq3.addLog("Queue1", "WALLogFile1.1");
+            assertEquals(3, rq1.getAllQueues().size());
+            assertEquals(2, rq2.getAllQueues().size());
+            assertEquals(1, rq3.getAllQueues().size());
+            assertEquals(4, rq1.getLogsInQueue("Queue1").size());
+            assertEquals(1, rq1.getLogsInQueue("Queue2").size());
+            assertEquals(1, rq1.getLogsInQueue("Queue3").size());
+            assertEquals(2, rq2.getLogsInQueue("Queue1").size());
+            assertEquals(1, rq2.getLogsInQueue("Queue2").size());
+            assertEquals(1, rq3.getLogsInQueue("Queue1").size());
+        } catch (ReplicationException e) {
+            e.printStackTrace();
+            fail("testAddLogs received a ReplicationException");
+        }
+        try {
+            rq1.setLogPosition("Queue1", "WALLogFile1.1", 1l);
+            rq1.setLogPosition("Queue1", "WALLogFile1.2", 2l);
+            rq1.setLogPosition("Queue1", "WALLogFile1.3", 3l);
+            rq1.setLogPosition("Queue2", "WALLogFile2.1", 4l);
+            rq1.setLogPosition("Queue2", "WALLogFile2.2", 5l);
+            rq1.setLogPosition("Queue3", "WALLogFile3.1", 6l);
+            rq2.setLogPosition("Queue1", "WALLogFile1.1", 7l);
+            rq2.setLogPosition("Queue2", "WALLogFile2.1", 8l);
+            rq3.setLogPosition("Queue1", "WALLogFile1.1", 9l);
+            assertEquals(1l, rq1.getLogPosition("Queue1", "WALLogFile1.1"));
+            assertEquals(2l, rq1.getLogPosition("Queue1", "WALLogFile1.2"));
+            assertEquals(4l, rq1.getLogPosition("Queue2", "WALLogFile2.1"));
+            assertEquals(6l, rq1.getLogPosition("Queue3", "WALLogFile3.1"));
+            assertEquals(7l, rq2.getLogPosition("Queue1", "WALLogFile1.1"));
+            assertEquals(8l, rq2.getLogPosition("Queue2", "WALLogFile2.1"));
+            assertEquals(9l, rq3.getLogPosition("Queue1", "WALLogFile1.1"));
+        } catch (ReplicationException e) {
+            e.printStackTrace();
+            fail("testAddLogs threw a ReplicationException");
+        }
+        try {
+            Map<String, SortedSet<String>> claimedQueuesFromRq2 = rq1.claimQueues(server2);
+            assertEquals(2, claimedQueuesFromRq2.size());
+            assertTrue(claimedQueuesFromRq2.containsKey("Queue1-hostname2.example.org,1234,-1"));
+            assertTrue(claimedQueuesFromRq2.containsKey("Queue2-hostname2.example.org,1234,-1"));
+            assertEquals(2, claimedQueuesFromRq2.get("Queue1-hostname2.example.org,1234,-1").size());
+            assertEquals(1, claimedQueuesFromRq2.get("Queue2-hostname2.example.org,1234,-1").size());
+            assertEquals(5, rq1.getAllQueues().size());
+            // Check that all the logs in the other queue were claimed
+            assertEquals(2, rq1.getLogsInQueue("Queue1-hostname2.example.org,1234,-1").size());
+            assertEquals(1, rq1.getLogsInQueue("Queue2-hostname2.example.org,1234,-1").size());
+            // Check that the offsets of the claimed queues are the same
+            assertEquals(7l, rq1.getLogPosition("Queue1-hostname2.example.org,1234,-1", "WALLogFile1.1"));
+            assertEquals(8l, rq1.getLogPosition("Queue2-hostname2.example.org,1234,-1", "WALLogFile2.1"));
+            // Check that the queues were properly removed from rq2
+            assertEquals(0, rq2.getAllQueues().size());
+
+            // TODO: What do we really want to do here
+            /*
+            assertNull(rq2.getLogsInQueue("Queue1"));
+            assertNull(rq2.getLogsInQueue("Queue2"));
+            */
+
+            Map<String, SortedSet<String>> claimedQueuesFromRq1 = rq3.claimQueues(server1);
+            assertEquals(5, claimedQueuesFromRq1.size());
+            assertEquals(6, rq3.getAllQueues().size());
+
+        } catch (ReplicationException e) {
+            e.printStackTrace();
+            fail("testClaimQueue threw a ReplicationException");
+        }
+
+
+        rq1.removeAllQueues();
+        rq2.removeAllQueues();
+        rq3.removeAllQueues();
+        assertEquals(0, rq1.getAllQueues().size());
+        assertEquals(0, rq2.getAllQueues().size());
+        assertEquals(0, rq3.getAllQueues().size());
+
     }
 
     @After

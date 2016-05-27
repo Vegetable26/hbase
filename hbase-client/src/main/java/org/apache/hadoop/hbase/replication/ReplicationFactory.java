@@ -32,18 +32,6 @@ import java.io.IOException;
 @InterfaceAudience.Private
 public class ReplicationFactory {
 
-  public static ReplicationQueues getReplicationQueues(final ZooKeeperWatcher zk,
-      Configuration conf, Abortable abortable) throws IOException {
-      try {
-          return (ReplicationQueues) conf.getClass("hbase.region.replica.replication.ReplicationQueuesType",
-                  ReplicationQueuesZKImpl.class).getDeclaredConstructor(ZooKeeperWatcher.class, Configuration.class,
-                  Abortable.class).newInstance(zk, conf, abortable);
-      } catch (Exception e) {
-          e.printStackTrace();
-          throw new IOException("ReplicationFactory.getReplicationQueues() failed to construct ReplicationQueue");
-      }
-  }
-
   public static ReplicationQueues getReplicationQueues(ReplicationQueuesArguments args) throws IOException {
     try {
       return (ReplicationQueues) args.getConf().getClass("hbase.region.replica.replication.ReplicationQueuesType",

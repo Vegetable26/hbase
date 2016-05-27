@@ -18,6 +18,11 @@ public class ReplicationQueuesArguments {
     this.abort = abort;
   }
 
+  public ReplicationQueuesArguments(Configuration conf, Abortable abort, ZooKeeperWatcher zk) {
+    this(conf, abort);
+    setZk(zk);
+  }
+
   public ZooKeeperWatcher getZk() {
     return zk;
   }

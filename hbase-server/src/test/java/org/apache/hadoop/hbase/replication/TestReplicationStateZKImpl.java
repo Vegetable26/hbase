@@ -93,9 +93,9 @@ public class TestReplicationStateZKImpl extends TestReplicationStateBasic {
     DummyServer ds2 = new DummyServer(server2);
     DummyServer ds3 = new DummyServer(server3);
     try {
-      rq1 = ReplicationFactory.getReplicationQueues(zkw, conf, ds1);
-      rq2 = ReplicationFactory.getReplicationQueues(zkw, conf, ds2);
-      rq3 = ReplicationFactory.getReplicationQueues(zkw, conf, ds3);
+      rq1 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds1, zkw));
+      rq2 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds2, zkw));
+      rq3 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds3, zkw));
     } catch (IOException e) {
       // This should not occur, because getReplicationQueues() only throws for ReplicationQueuesHBaseImpl
       fail("ReplicationFactory.getReplicationQueues() threw an IO Exception");

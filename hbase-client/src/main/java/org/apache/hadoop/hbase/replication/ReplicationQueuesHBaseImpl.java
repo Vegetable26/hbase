@@ -50,12 +50,6 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         this(args.getConf(), args.getAbort());
     }
 
-    // TODO: Delete
-
-    public ReplicationQueuesHBaseImpl(ZooKeeperWatcher zk, Configuration conf, Abortable abort) throws IOException{
-        this(conf, abort);
-    }
-
     public ReplicationQueuesHBaseImpl(Configuration conf, Abortable abort) throws IOException {
         this.connection = ConnectionFactory.createConnection(conf);
         this.admin = connection.getAdmin();

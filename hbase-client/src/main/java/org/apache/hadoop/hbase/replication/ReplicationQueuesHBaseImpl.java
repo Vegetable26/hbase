@@ -34,6 +34,7 @@ import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.filter.CompareFilter;
@@ -52,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.SortedSet;
+import java.util.TreeMap;
 
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
@@ -226,8 +228,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public List<String> getAllQueues() {
+        List<String> queues = new ArrayList<String>();
         try {
-            return this.getQueuesBelongingToServer(serverName);
+            ResultScanner results = this.getQueuesBelongingToServer(serverName);
+            for (Result result : results) {
+                queues.add(Bytes.toString(result.getValue(CF, QUEUE_ID)));
+            }
+            return queues;
         } catch (IOException e) {
             abortable.abort("Could not get all replication queues", e);
             return null;
@@ -236,8 +243,27 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public SortedMap<String, SortedSet<String>> claimQueues(String regionserver) {
-        // TODO
-        throw new NotImplementedException();
+        SortedMap<String, SortedSet<String>> queues = new TreeMap<String, SortedSet<String>>();
+
+        try {
+            ResultScanner queuesToClaim = this.getQueuesBelongingToServer(regionserver);
+            for (Result queue : queuesToClaim) {
+                if (claimQueueSuccess(queue, regionserver)) {
+                    System.out.println("Successfully claimed " + Bytes.toString(queue.getRow()));
+                    // TODO: Copy in the logs to the queue
+                }
+
+            }
+
+        } catch (IOException e) {
+
+        }
+
+
+
+
+
+        return queues;
     }
 
     @Override
@@ -319,24 +345,19 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     }
 
     /**
-     * Get the QueueIds belonging to the named server from the ReplicationTable
+     * Get the Queues belonging to the named server from the ReplicationTable.
      * @param server name of the server
-     * @return a list of the QueueIds belonging to the server
+     * @return a scanner over the Queues belonging to the server with fields "Owner" and "QueueId"
      * @throws IOException
      */
-    private List<String> getQueuesBelongingToServer(String server) throws IOException{
-        List<String> queues = new ArrayList<String>();
+    private ResultScanner getQueuesBelongingToServer(String server) throws IOException{
         Scan scan = new Scan();
         SingleColumnValueFilter filterMyQueues = new SingleColumnValueFilter(CF, OWNER,
                 CompareFilter.CompareOp.EQUAL, Bytes.toBytes(server));
         scan.setFilter(filterMyQueues);
         scan.addColumn(CF, QUEUE_ID);
         ResultScanner results = replicationTable.getScanner(scan);
-        for (Result result : results) {
-            queues.add(Bytes.toString(result.getValue(CF, QUEUE_ID)));
-        }
-        results.close();
-        return queues;
+        return results;
     }
 
     // TODO: We can cache queueId's if ReplicationQueuesHBaseImpl becomes a bottleneck. We currently perform scan's over
@@ -367,5 +388,25 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         Result result = results.next();
         results.close();
         return (result == null) ? null : result.getRow();
+    }
+
+    private boolean claimQueueSuccess (Result queue, String originalServer ) throws IOException{
+        Put putNewQueueOwner = new Put(queue.getRow());
+        putNewQueueOwner.addColumn(CF, OWNER, Bytes.toBytes(serverName));
+
+        // See the naming convention used by ReplicationQueuesZKImpl:
+        // We add the name of the recovered RS to the new znode, we can even
+        // do that for queues that were recovered 10 times giving a znode like
+        // number-startcode-number-otherstartcode-number-anotherstartcode-etc
+        String newQueueId = Bytes.toString(queue.getValue(CF, QUEUE_ID)) + originalServer;
+        Put putNewQueueId = new Put(queue.getRow());
+        putNewQueueId.addColumn(CF, QUEUE_ID, Bytes.toBytes(newQueueId));
+
+        RowMutations claimAndRenameQueue = new RowMutations();
+        claimAndRenameQueue.add(putNewQueueOwner);
+        claimAndRenameQueue.add(putNewQueueId);
+
+        return replicationTable.checkAndMutate(queue.getRow(), CF, OWNER, CompareFilter.CompareOp.EQUAL,
+          Bytes.toBytes(originalServer), claimAndRenameQueue);
     }
 }

@@ -49,17 +49,14 @@ public class TestReplicationStateHBaseImpl {
     private static Configuration conf;
     private static HBaseTestingUtility utility;
     private static Connection connection;
-
     private static ReplicationQueues rqH;
-
-    private static MiniHBaseCluster cluster;
 
     private final String server1 = ServerName.valueOf("hostname1.example.org", 1234, -1L).toString();
 
     @BeforeClass
     public static void setUpBeforeClass() throws Exception {
         utility = new HBaseTestingUtility();
-        cluster = utility.startMiniCluster();
+        utility.startMiniCluster();
         conf = utility.getConfiguration();
         conf.setClass("hbase.region.replica.replication.ReplicationQueuesType", ReplicationQueuesHBaseImpl.class,
                 ReplicationQueues.class);
@@ -142,7 +139,6 @@ public class TestReplicationStateHBaseImpl {
             e.printStackTrace();
             fail("testAddLog received a ReplicationException");
         }
-
     }
 
     // TODO: Perhaps just inherit this from TestReplicationStateBase
@@ -216,6 +212,4 @@ public class TestReplicationStateHBaseImpl {
             return null;
         }
     }
-
-
 }

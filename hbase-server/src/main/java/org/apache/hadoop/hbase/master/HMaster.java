@@ -806,9 +806,6 @@ public class HMaster extends HRegionServer implements MasterServices {
       }
     }
 
-    status.setStatus("Building replication table");
-    assignReplication();
-
     LOG.info("Master has completed initialization");
     configurationManager.registerObserver(this.balancer);
 
@@ -970,26 +967,6 @@ public class HMaster extends HRegionServer implements MasterServices {
     LOG.info("hbase:meta with replicaId " + replicaId + " assigned=" + assigned + ", location="
       + metaTableLocator.getMetaRegionLocation(this.getZooKeeper(), replicaId));
     status.setStatus("META assigned.");
-  }
-
-  private void assignReplication() throws IOException, InterruptedException{
-
-    // TODO: Is this the best way to check if a table exists? or should I rely on TableStateManager...
-
-    if (!this.getConnection().getAdmin().tableExists(TableName.REPLICATION_TABLE_NAME)) {
-      HRegionInfo[] newRegions = new HRegionInfo[]{
-        new HRegionInfo(HTableDescriptor.REPLICATION_TABLEDESC.getTableName(), null, null)};
-
-      this.getMasterProcedureExecutor()
-        .submitProcedure(new CreateTableProcedure(
-          this.getMasterProcedureExecutor().getEnvironment(),
-          HTableDescriptor.REPLICATION_TABLEDESC,
-          newRegions));
-      System.out.println("Creating new replication table");
-      while (!this.getConnection().getAdmin().tableExists(TableName.REPLICATION_TABLE_NAME)) {
-        Thread.sleep(100);
-      }
-    }
   }
 
   void initClusterSchemaService() throws IOException, InterruptedException {

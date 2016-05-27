@@ -20,22 +20,43 @@
 package org.apache.hadoop.hbase.replication;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.*;
+
+import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableExistsException;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.client.*;
+
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.SortedSet;
+
 
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
+    private Configuration conf = null;
+    private Admin admin = null;
     private Connection connection = null;
     private Table replicationTable = null;
     private Abortable abort = null;
@@ -45,20 +66,16 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private final byte[] OWNER = HTableDescriptor.REPLICATION_COL_OWNER_BYTES;
     private final byte[] QUEUE_ID = HTableDescriptor.REPLICATION_COL_QUEUE_ID_BYTES;
 
-     /*
-      * Each ReplicationSource or queue should only own one entry in this map. So concurrent accesses to
-      * this class should be safe.
-      */
-    private Map<String, byte[]> queueIdToRowKey = new ConcurrentHashMap<String, byte[]>();
-
     public ReplicationQueuesHBaseImpl(ReplicationQueuesArguments args) throws IOException {
         this(args.getConf(), args.getAbort());
     }
 
     public ReplicationQueuesHBaseImpl(Configuration conf, Abortable abort) throws IOException {
+        this.conf = conf;
         this.connection = ConnectionFactory.createConnection(conf);
+        this.admin = connection.getAdmin();
         this.abort = abort;
-        replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
+        replicationTable = createAndGetReplicationTable();
     }
 
     @Override
@@ -68,14 +85,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void removeQueue(String queueId) {
-        byte[] rowKey = queueIdToRowKey.get(queueId);
-        if (rowKey == null) {
-            return;
-        }
-        Delete deleteQueue = new Delete(rowKey);
         try {
+            byte[] rowKey = this.queueIdToRowKey(queueId);
+            if (rowKey == null) {
+                return;
+            }
+            Delete deleteQueue = new Delete(rowKey);
             replicationTable.delete(deleteQueue);
-            queueIdToRowKey.remove(queueId);
         } catch (IOException e) {
             abort.abort("Could not remove queueId from queueId=" + queueId, e);
         }
@@ -83,18 +99,17 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void addLog(String queueId, String filename) throws ReplicationException {
-        // Add the queue to the Replication Table if we cannot find it in our local map
-        if (!queueIdToRowKey.containsKey(queueId)) {
-            try {
+        try {
+            // Check if the queue meta information (Owner, QueueId) is currently stored in the Replication Table
+            if (this.queueIdToRowKey(queueId) == null) {
                 // Each queue will have an Owner, QueueId, and a collection of [WAL:offset] key values.
                 Put putNewQueue = new Put(Bytes.toBytes(buildServerQueueName(queueId)));
                 putNewQueue.addColumn(CF, OWNER, Bytes.toBytes(serverName));
                 putNewQueue.addColumn(CF, QUEUE_ID, Bytes.toBytes(queueId));
                 replicationTable.put(putNewQueue);
-                queueIdToRowKey.put(queueId, Bytes.toBytes(buildServerQueueName(queueId)));
-            } catch (IOException e) {
-                throw new ReplicationException("Could not add queue queueId=" + queueId);
             }
+        } catch (IOException e) {
+            throw new ReplicationException("Could not add queue queueId=" + queueId);
         }
         // TODO: Check if we want to initialize initial position to 0 or null
         this.setLogPosition(queueId, filename, 0);
@@ -102,15 +117,15 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void removeLog(String queueId, String filename) {
-        byte[] rowKey = queueIdToRowKey.get(queueId);
-        if (rowKey == null) {
-            abort.abort("Could not remove non-existent log from queueId=" + queueId + ", filename=" + filename,
-              new ReplicationException());
-            return;
-        }
-        Delete delete = new Delete(rowKey);
-        delete.addColumns(CF, Bytes.toBytes(filename));
         try {
+            byte[] rowKey = this.queueIdToRowKey(queueId);
+            if (rowKey == null) {
+                abort.abort("Could not remove non-existent log from queueId=" + queueId + ", filename=" + filename,
+                  new ReplicationException());
+                return;
+            }
+            Delete delete = new Delete(rowKey);
+            delete.addColumns(CF, Bytes.toBytes(filename));
             replicationTable.delete(delete);
         } catch (IOException e) {
             abort.abort("Could not remove log from queueId=" + queueId + ", filename=" + filename, e);
@@ -119,13 +134,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public void setLogPosition(String queueId, String filename, long position) {
-        byte[] rowKey = queueIdToRowKey.get(queueId);
-        if (rowKey == null) {
-            abort.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" + filename,
-              new ReplicationException());
-            return;
-        }
         try {
+            byte[] rowKey = this.queueIdToRowKey(queueId);
+            if (rowKey == null) {
+                abort.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" + filename,
+                  new ReplicationException());
+                return;
+            }
             Put walAndOffset = new Put(rowKey);
             walAndOffset.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(position));
             replicationTable.put(walAndOffset);
@@ -137,14 +152,14 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public long getLogPosition(String queueId, String filename) throws ReplicationException {
-        byte[] rowKey = queueIdToRowKey.get(queueId);
-        if (rowKey == null) {
-            throw new ReplicationException("Could not get position in log for non-existent queue queueId="
-              + queueId + ", filename=" + filename);
-        }
-        Get getOffset = new Get(rowKey);
-        getOffset.addColumn(CF, Bytes.toBytes(filename));
         try {
+            byte[] rowKey = this.queueIdToRowKey(queueId);
+            if (rowKey == null) {
+                throw new ReplicationException("Could not get position in log for non-existent queue queueId="
+                  + queueId + ", filename=" + filename);
+            }
+            Get getOffset = new Get(rowKey);
+            getOffset.addColumn(CF, Bytes.toBytes(filename));
             Result result = replicationTable.get(getOffset);
             if (result.isEmpty()) {
                 throw new ReplicationException("Could not read empty result while getting log position queueId="
@@ -163,19 +178,18 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         for (String queueId : myQueueIds) {
             removeQueue(queueId);
         }
-        queueIdToRowKey.clear();
     }
 
     @Override
     public List<String> getLogsInQueue(String queueId) {
-        byte[] rowKey = queueIdToRowKey.get(queueId);
-        if (rowKey == null) {
-            abort.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
-            return null;
-        }
         List<String> logs = new ArrayList<String>();
-        Get getQueue = new Get(rowKey);
         try {
+            byte[] rowKey = this.queueIdToRowKey(queueId);
+            if (rowKey == null) {
+                abort.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
+                return null;
+            }
+            Get getQueue = new Get(rowKey);
             Result queue = replicationTable.get(getQueue);
             if (queue.isEmpty()) {
                 return null;
@@ -238,6 +252,43 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     }
 
     /**
+     * Gets the Replication Table. Builds and blocks until the table is available if the Replication Table does not
+     * exist.
+     * @return the Replication Table
+     * @throws IOException if the Replication Table takes too long to build
+     */
+    private Table createAndGetReplicationTable() throws IOException{
+        if (!replicationTableExists()) {
+            try {
+                admin.createTable(HTableDescriptor.REPLICATION_TABLEDESC);
+            } catch (TableExistsException e) {
+            }
+            int retries = 0;
+            int maxRetries = conf.getInt("hbase.region.replica.replication.hbaseimpl.max_init_retries", 100);
+            while (!replicationTableExists()) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                }
+                retries++;
+                if (retries > maxRetries) {
+                    throw new IOException("Creating Replication Table timed out after " + retries + " retries");
+                }
+            }
+        }
+        return connection.getTable(TableName.REPLICATION_TABLE_NAME);
+    }
+
+    /**
+     * Checks whether the Replication Table exists yet
+     * @return whether the Replication Table exists
+     * @throws IOException
+     */
+    private boolean replicationTableExists() throws IOException {
+        return admin.tableExists(TableName.REPLICATION_TABLE_NAME);
+    }
+
+    /**
      * Builds the unique identifier for a queue in the Replication table by appending the queueId to the servername
      * @param queueId a String that identifies the queue
      * @return unique identifier for a queue in the Replication table
@@ -263,6 +314,31 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         for (Result result : results) {
             queues.add(Bytes.toString(result.getValue(CF, QUEUE_ID)));
         }
+        results.close();
         return queues;
+    }
+
+    // TODO: We can cache queueId's if ReplicationQueuesHBaseImpl becomes a bottleneck. We currently perform scan's over
+    // TODO: all the rows looking for one with a matching QueueId.
+    /**
+     * Finds the rowkey of the HBase row corresponding to the provided queue
+     * @param queueId string representation of the queue id
+     * @return the rowkey of the corresponding queue
+     * @throws IOException
+     */
+    private byte[] queueIdToRowKey(String queueId) throws IOException{
+        Scan scan = new Scan();
+        scan.setMaxResultSize(1);
+        // Search for the row that matches this queueId
+        SingleColumnValueFilter filterByQueueId = new SingleColumnValueFilter(CF, QUEUE_ID,
+          CompareFilter.CompareOp.EQUAL, Bytes.toBytes(queueId));
+        // Filter by queueId must be inserted first
+        scan.setFilter(filterByQueueId);
+        // TODO: Use FirstKeyOnlyFilter
+        // We do not want to return all the WAL's when scanning only for the row key
+        scan.addColumn(CF, QUEUE_ID);
+        ResultScanner results = replicationTable.getScanner(scan);
+        Result result = results.next();
+        return (result == null) ? null : result.getRow();
     }
 }

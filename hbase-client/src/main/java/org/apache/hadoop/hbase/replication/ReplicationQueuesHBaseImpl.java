@@ -27,6 +27,7 @@ import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.io.IOException;
 import java.util.*;
@@ -35,7 +36,6 @@ import java.util.*;
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     private Connection connection = null;
-    private Admin admin = null;
     private Table replicationTable = null;
     private Abortable abort = null;
     private String serverName = null;
@@ -52,7 +52,6 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     public ReplicationQueuesHBaseImpl(Configuration conf, Abortable abort) throws IOException {
         this.connection = ConnectionFactory.createConnection(conf);
-        this.admin = connection.getAdmin();
         this.abort = abort;
         replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
     }
@@ -202,13 +201,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     @Override
     public SortedMap<String, SortedSet<String>> claimQueues(String regionserver) {
         // TODO
-        return new TreeMap<String, SortedSet<String>>();
+        throw new NotImplementedException();
     }
 
     @Override
     public List<String> getListOfReplicators() {
         // TODO
-        return new ArrayList<String>();
+        throw new NotImplementedException();
     }
 
     @Override
@@ -219,16 +218,19 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     @Override
     public void addPeerToHFileRefs(String peerId) throws ReplicationException {
         // TODO
+        throw new NotImplementedException();
     }
 
     @Override
     public void addHFileRefs(String peerId, List<String> files) throws ReplicationException {
         // TODO
+        throw new NotImplementedException();
     }
 
     @Override
     public void removeHFileRefs(String peerId, List<String> files) {
         // TODO
+        throw new NotImplementedException();
     }
 
     /**
@@ -238,16 +240,6 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
      */
     private String buildServerQueueName(String queueId) {
         return serverName + "-" + queueId;
-    }
-
-    /**
-     * Check if the given table exists and create if it doesn't.
-     * @param tableName name of the table to get
-     * @return the table
-     * @throws IOException
-     */
-    private Table createAndGetTable(TableName tableName) throws IOException {
-        return connection.getTable(tableName);
     }
 
     /**

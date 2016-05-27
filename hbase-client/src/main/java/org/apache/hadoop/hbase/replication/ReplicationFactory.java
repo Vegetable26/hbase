@@ -39,11 +39,21 @@ public class ReplicationFactory {
                   ReplicationQueuesZKImpl.class).getDeclaredConstructor(ZooKeeperWatcher.class, Configuration.class,
                   Abortable.class).newInstance(zk, conf, abortable);
       } catch (Exception e) {
-          System.out.println("Hi joseph");
           e.printStackTrace();
           throw new IOException("ReplicationFactory.getReplicationQueues() failed to construct ReplicationQueue");
       }
   }
+
+  public static ReplicationQueues getReplicationQueues(ReplicationQueuesArguments args) throws IOException {
+    try {
+      return (ReplicationQueues) args.getConf().getClass("hbase.region.replica.replication.ReplicationQueuesType",
+        ReplicationQueuesZKImpl.class).getDeclaredConstructor(ReplicationQueuesArguments.class).newInstance(args);
+    } catch (Exception e) {
+      e.printStackTrace();
+      throw new IOException("ReplicationFactory.getReplicationQueues() failed to construct ReplicationQueue");
+    }
+  }
+
 
   public static ReplicationQueuesClient getReplicationQueuesClient(final ZooKeeperWatcher zk,
       Configuration conf, Abortable abortable) {

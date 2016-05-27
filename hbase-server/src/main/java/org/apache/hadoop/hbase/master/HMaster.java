@@ -973,6 +973,7 @@ public class HMaster extends HRegionServer implements MasterServices {
   }
 
   private void assignReplication() throws IOException, InterruptedException{
+
     HRegionInfo[] newRegions = new HRegionInfo[]{
       new HRegionInfo(HTableDescriptor.REPLICATION_TABLEDESC.getTableName(), null, null)};
 

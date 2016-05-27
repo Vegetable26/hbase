@@ -64,14 +64,13 @@ public class TestReplicationStateHBaseImpl {
         conf.setClass("hbase.region.replica.replication.ReplicationQueuesType", ReplicationQueuesHBaseImpl.class,
                 ReplicationQueues.class);
         connection = ConnectionFactory.createConnection(conf);
-
     }
 
     @Test
     public void testReplicationStateHBase () {
         try {
             DummyServer ds = new DummyServer(server1);
-            rqH = ReplicationFactory.getReplicationQueues(null, conf, ds);
+            rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds));
             rqH.init(server1);
             // Check that the proper System Tables have been generated
             Table replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);

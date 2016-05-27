@@ -46,7 +46,12 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     private Map<String, byte[]> queueIdToRowKey = new HashMap<String, byte[]>();
 
-    // TODO: Used for ReplicationFactory reflection construction. Feels kind of convoluted
+    public ReplicationQueuesHBaseImpl(ReplicationQueuesArguments args) throws IOException {
+        this(args.getConf(), args.getAbort());
+    }
+
+    // TODO: Delete
+
     public ReplicationQueuesHBaseImpl(ZooKeeperWatcher zk, Configuration conf, Abortable abort) throws IOException{
         this(conf, abort);
     }

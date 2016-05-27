@@ -39,6 +39,8 @@ import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.filter.CompareFilter;
+import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
@@ -328,15 +330,20 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
      */
     private byte[] queueIdToRowKey(String queueId) throws IOException{
         Scan scan = new Scan();
+        scan.addColumn(CF, QUEUE_ID);
+        scan.addColumn(CF, OWNER);
         scan.setMaxResultSize(1);
         // Search for the row that matches this queueId
         SingleColumnValueFilter filterByQueueId = new SingleColumnValueFilter(CF, QUEUE_ID,
           CompareFilter.CompareOp.EQUAL, Bytes.toBytes(queueId));
+        // Make sure that we are the owners of the queue. QueueId's may overlap
+        SingleColumnValueFilter filterByOwner = new SingleColumnValueFilter(CF, OWNER,
+          CompareFilter.CompareOp.EQUAL, Bytes.toBytes(serverName));
+        // Only return the row key
+        FirstKeyOnlyFilter filterOutColumns = new FirstKeyOnlyFilter();
         // Filter by queueId must be inserted first
-        scan.setFilter(filterByQueueId);
-        // TODO: Use FirstKeyOnlyFilter
-        // We do not want to return all the WAL's when scanning only for the row key
-        scan.addColumn(CF, QUEUE_ID);
+        FilterList filterList = new FilterList(filterByQueueId, filterByOwner, filterOutColumns);
+        scan.setFilter(filterList);
         ResultScanner results = replicationTable.getScanner(scan);
         Result result = results.next();
         return (result == null) ? null : result.getRow();

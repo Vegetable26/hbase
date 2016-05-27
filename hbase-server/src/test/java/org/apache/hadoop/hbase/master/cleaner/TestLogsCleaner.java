@@ -95,7 +95,7 @@ public class TestLogsCleaner {
     Replication.decorateMasterConfiguration(conf);
     Server server = new DummyServer();
     ReplicationQueues repQueues =
-        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, null, server.getZooKeeper()));
+        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, server, server.getZooKeeper()));
     repQueues.init(server.getServerName().toString());
     final Path oldLogDir = new Path(TEST_UTIL.getDataTestDir(),
         HConstants.HREGION_OLDLOGDIR_NAME);

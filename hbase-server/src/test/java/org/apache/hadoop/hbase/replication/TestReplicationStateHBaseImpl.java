@@ -240,12 +240,8 @@ public class TestReplicationStateHBaseImpl {
             assertEquals(8l, rq1.getLogPosition("Queue2-hostname2.example.org,1234,-1", "WALLogFile2.1"));
             // Check that the queues were properly removed from rq2
             assertEquals(0, rq2.getAllQueues().size());
-
-            // TODO: What do we really want to do here
-            /*
             assertNull(rq2.getLogsInQueue("Queue1"));
             assertNull(rq2.getLogsInQueue("Queue2"));
-            */
 
             Map<String, SortedSet<String>> claimedQueuesFromRq1 = rq3.claimQueues(server1);
             assertEquals(5, claimedQueuesFromRq1.size());
@@ -255,8 +251,6 @@ public class TestReplicationStateHBaseImpl {
             e.printStackTrace();
             fail("testClaimQueue threw a ReplicationException");
         }
-
-
         rq1.removeAllQueues();
         rq2.removeAllQueues();
         rq3.removeAllQueues();

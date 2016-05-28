@@ -315,9 +315,6 @@ public class ReplicationSourceManager implements ReplicationListener {
    */
   public void join() {
     this.executor.shutdown();
-    if (this.sources.size() == 0) {
-      this.replicationQueues.removeAllQueues();
-    }
     for (ReplicationSourceInterface source : this.sources) {
       source.terminate("Region server is closing");
     }

@@ -346,6 +346,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         scan.setFilter(filterList);
         ResultScanner results = replicationTable.getScanner(scan);
         Result result = results.next();
+        results.close();
         return (result == null) ? null : result.getRow();
     }
 }

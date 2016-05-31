@@ -61,7 +61,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private Admin admin = null;
     private Connection connection = null;
     private Table replicationTable = null;
-    private Abortable abort = null;
+    private Abortable abortable = null;
     private String serverName = null;
 
     private final byte[] CF = HConstants.REPLICATION_FAMILY;
@@ -76,7 +76,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         this.conf = conf;
         this.connection = ConnectionFactory.createConnection(conf);
         this.admin = connection.getAdmin();
-        this.abort = abort;
+        this.abortable = abort;
         replicationTable = createAndGetReplicationTable();
     }
 
@@ -95,7 +95,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             Delete deleteQueue = new Delete(rowKey);
             replicationTable.delete(deleteQueue);
         } catch (IOException e) {
-            abort.abort("Could not remove queueId from queueId=" + queueId, e);
+            abortable.abort("Could not remove queueId from queueId=" + queueId, e);
         }
     }
 
@@ -108,13 +108,14 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
                 Put putNewQueue = new Put(Bytes.toBytes(buildServerQueueName(queueId)));
                 putNewQueue.addColumn(CF, OWNER, Bytes.toBytes(serverName));
                 putNewQueue.addColumn(CF, QUEUE_ID, Bytes.toBytes(queueId));
+                putNewQueue.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(0l));
                 replicationTable.put(putNewQueue);
+            } else {
+                setLogPosition(queueId, filename, 0l);
             }
         } catch (IOException e) {
-            throw new ReplicationException("Could not add queue queueId=" + queueId);
+            throw new ReplicationException("Could not add queue queueId=" + queueId + " filename=" + filename);
         }
-        // TODO: Check if we want to initialize initial position to 0 or null
-        this.setLogPosition(queueId, filename, 0);
     }
 
     @Override
@@ -122,7 +123,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         try {
             byte[] rowKey = this.queueIdToRowKey(queueId);
             if (rowKey == null) {
-                abort.abort("Could not remove non-existent log from queueId=" + queueId + ", filename=" + filename,
+                abortable.abort("Could not remove non-existent log from queueId=" + queueId + ", filename=" + filename,
                   new ReplicationException());
                 return;
             }
@@ -130,7 +131,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             delete.addColumns(CF, Bytes.toBytes(filename));
             replicationTable.delete(delete);
         } catch (IOException e) {
-            abort.abort("Could not remove log from queueId=" + queueId + ", filename=" + filename, e);
+            abortable.abort("Could not remove log from queueId=" + queueId + ", filename=" + filename, e);
         }
     }
 
@@ -139,7 +140,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         try {
             byte[] rowKey = this.queueIdToRowKey(queueId);
             if (rowKey == null) {
-                abort.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" + filename,
+                abortable.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" + filename,
                   new ReplicationException());
                 return;
             }
@@ -147,7 +148,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             walAndOffset.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(position));
             replicationTable.put(walAndOffset);
         } catch (IOException e) {
-            this.abort.abort("Failed to write replication wal position (filename=" + filename
+            this.abortable.abort("Failed to write replication wal position (filename=" + filename
                 + ", position=" + position + ")", e);
         }
     }
@@ -188,7 +189,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         try {
             byte[] rowKey = this.queueIdToRowKey(queueId);
             if (rowKey == null) {
-                abort.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
+                abortable.abort("Could not get logs from non-existent queueId=" + queueId, new ReplicationException());
                 return null;
             }
             Get getQueue = new Get(rowKey);
@@ -214,6 +215,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         try {
             return this.getQueuesBelongingToServer(serverName);
         } catch (IOException e) {
+            abortable.abort("Could not get all replication queues", e);
             return null;
         }
     }

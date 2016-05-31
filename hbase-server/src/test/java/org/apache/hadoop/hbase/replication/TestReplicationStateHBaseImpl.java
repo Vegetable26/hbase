@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hbase.replication;
 
+import junit.framework.Assert;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -70,8 +71,8 @@ public class TestReplicationStateHBaseImpl {
 
     @Test
     public void testReplicationStateHBase () {
+        DummyServer ds = new DummyServer(server1);
         try {
-            DummyServer ds = new DummyServer(server1);
             rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds));
             rqH.init(server1);
             // Check that the proper System Tables have been generated
@@ -118,6 +119,15 @@ public class TestReplicationStateHBaseImpl {
             rqH.setLogPosition("Queue3", "WALLogFile3.1", 243l);
             assertEquals(243l, rqH.getLogPosition("Queue3", "WALLogFile3.1"));
 
+            // Test if writing to non-existent queue results in abort
+            assertEquals(0, ds.getAbortCount());
+            rqH.setLogPosition("NotHereQueue", "WALLogFile3.1", 243l);
+            assertEquals(1, ds.getAbortCount());
+            rqH.setLogPosition("NotHereQueue", "NotHereFile", 243l);
+            assertEquals(2, ds.getAbortCount());
+            rqH.setLogPosition("Queue1", "NotHereFile", 243l);
+            assertEquals(3, ds.getAbortCount());
+
             // Test reading log positions for non-existent queues and WAL's
             try {
                 rqH.getLogPosition("Queue1", "NotHereWAL");
@@ -151,6 +161,7 @@ public class TestReplicationStateHBaseImpl {
         private String serverName;
         private boolean isAborted = false;
         private boolean isStopped = false;
+        private int abortCount = 0;
 
         public DummyServer(String serverName) {
             this.serverName = serverName;
@@ -188,7 +199,7 @@ public class TestReplicationStateHBaseImpl {
 
         @Override
         public void abort(String why, Throwable e) {
-            LOG.info("Aborting " + serverName);
+            abortCount++;
             this.isAborted = true;
         }
 
@@ -215,6 +226,10 @@ public class TestReplicationStateHBaseImpl {
         @Override
         public ClusterConnection getClusterConnection() {
             return null;
+        }
+
+        public int getAbortCount() {
+            return abortCount;
         }
     }
 }

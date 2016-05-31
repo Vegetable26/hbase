@@ -67,6 +67,8 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private final byte[] CF = HConstants.REPLICATION_FAMILY;
     private final byte[] OWNER = HTableDescriptor.REPLICATION_COL_OWNER_BYTES;
     private final byte[] QUEUE_ID = HTableDescriptor.REPLICATION_COL_QUEUE_ID_BYTES;
+    private final byte[] INITIAL_OFFSET = Bytes.toBytes(0L);
+    private final byte[] NEGATIVE_OFFSET = Bytes.toBytes(-1L);
 
     public ReplicationQueuesHBaseImpl(ReplicationQueuesArguments args) throws IOException {
         this(args.getConf(), args.getAbort());
@@ -108,10 +110,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
                 Put putNewQueue = new Put(Bytes.toBytes(buildServerQueueName(queueId)));
                 putNewQueue.addColumn(CF, OWNER, Bytes.toBytes(serverName));
                 putNewQueue.addColumn(CF, QUEUE_ID, Bytes.toBytes(queueId));
-                putNewQueue.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(0l));
+                putNewQueue.addColumn(CF, Bytes.toBytes(filename), INITIAL_OFFSET);
                 replicationTable.put(putNewQueue);
             } else {
-                setLogPosition(queueId, filename, 0l);
+                // Otherwise simply add the new log and offset as a new column
+                Put putNewLog = new Put(this.queueIdToRowKey(queueId));
+                putNewLog.addColumn(CF, Bytes.toBytes(filename), INITIAL_OFFSET);
+                replicationTable.put(putNewLog);
             }
         } catch (IOException e) {
             throw new ReplicationException("Could not add queue queueId=" + queueId + " filename=" + filename);
@@ -140,15 +145,22 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
         try {
             byte[] rowKey = this.queueIdToRowKey(queueId);
             if (rowKey == null) {
-                abortable.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" + filename,
+                abortable.abort("Could not set position of non-existent log from queueId=" + queueId + ", filename=" +
+                    filename,
                   new ReplicationException());
                 return;
             }
             Put walAndOffset = new Put(rowKey);
             walAndOffset.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(position));
-            replicationTable.put(walAndOffset);
+            // Check if the log file currently exists as a column. This can be done by checking if an offset exists
+            // for the file, any offset must be non-zero
+            if (!replicationTable.checkAndPut(rowKey, CF, Bytes.toBytes(filename), CompareFilter.CompareOp.GREATER,
+              NEGATIVE_OFFSET, walAndOffset)) {
+                abortable.abort("Failed to write replication wal position (filename=" + filename
+                  + ", position=" + position + ")", new ReplicationException());
+            }
         } catch (IOException e) {
-            this.abortable.abort("Failed to write replication wal position (filename=" + filename
+            abortable.abort("Failed to write replication wal position (filename=" + filename
                 + ", position=" + position + ")", e);
         }
     }

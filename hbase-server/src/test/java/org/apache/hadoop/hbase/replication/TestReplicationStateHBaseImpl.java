@@ -73,7 +73,7 @@ public class TestReplicationStateHBaseImpl {
     public void testReplicationStateHBase () {
         DummyServer ds = new DummyServer(server1);
         try {
-            rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds));
+            rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds, null));
             rqH.init(server1);
             // Check that the proper System Tables have been generated
             Table replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
@@ -101,32 +101,35 @@ public class TestReplicationStateHBaseImpl {
             assertEquals(4, rqH.getLogsInQueue("Queue1").size());
             assertEquals(1, rqH.getLogsInQueue("Queue2").size());
             assertEquals(1, rqH.getLogsInQueue("Queue3").size());
-            // TODO: Or should we throw an error
+            // Make sure that getting a log from a non-existent queue triggers an abort
+            assertEquals(0, ds.getAbortCount());
             assertNull(rqH.getLogsInQueue("Queue4"));
+            assertEquals(1, ds.getAbortCount());
         } catch (ReplicationException e) {
             e.printStackTrace();
             fail("testAddLog received a ReplicationException");
         }
         try {
+
             // Test updating the log positions
-            assertEquals(0l, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
-            rqH.setLogPosition("Queue1", "WALLogFile1.1", 123l);
-            assertEquals(123l, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
-            rqH.setLogPosition("Queue1", "WALLogFile1.1", 123456789l);
-            assertEquals(123456789l, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
-            rqH.setLogPosition("Queue2", "WALLogFile2.1", 242l);
-            assertEquals(242l, rqH.getLogPosition("Queue2", "WALLogFile2.1"));
-            rqH.setLogPosition("Queue3", "WALLogFile3.1", 243l);
-            assertEquals(243l, rqH.getLogPosition("Queue3", "WALLogFile3.1"));
+            assertEquals(0L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
+            rqH.setLogPosition("Queue1", "WALLogFile1.1", 123L);
+            assertEquals(123L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
+            rqH.setLogPosition("Queue1", "WALLogFile1.1", 123456789L);
+            assertEquals(123456789L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
+            rqH.setLogPosition("Queue2", "WALLogFile2.1", 242L);
+            assertEquals(242L, rqH.getLogPosition("Queue2", "WALLogFile2.1"));
+            rqH.setLogPosition("Queue3", "WALLogFile3.1", 243L);
+            assertEquals(243L, rqH.getLogPosition("Queue3", "WALLogFile3.1"));
 
             // Test if writing to non-existent queue results in abort
-            assertEquals(0, ds.getAbortCount());
-            rqH.setLogPosition("NotHereQueue", "WALLogFile3.1", 243l);
             assertEquals(1, ds.getAbortCount());
-            rqH.setLogPosition("NotHereQueue", "NotHereFile", 243l);
+            rqH.setLogPosition("NotHereQueue", "WALLogFile3.1", 243L);
             assertEquals(2, ds.getAbortCount());
-            rqH.setLogPosition("Queue1", "NotHereFile", 243l);
+            rqH.setLogPosition("NotHereQueue", "NotHereFile", 243L);
             assertEquals(3, ds.getAbortCount());
+            rqH.setLogPosition("Queue1", "NotHereFile", 243l);
+            assertEquals(4, ds.getAbortCount());
 
             // Test reading log positions for non-existent queues and WAL's
             try {

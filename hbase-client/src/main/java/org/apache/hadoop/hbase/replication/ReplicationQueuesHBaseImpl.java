@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -252,16 +253,20 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             for (Result result : results) {
                 queues.add(Bytes.toString(result.getValue(CF, QUEUE_ID)));
             }
-            return queues;
+            results.close();
         } catch (IOException e) {
             abortable.abort("Could not get all replication queues", e);
             return null;
         }
+        return queues;
     }
 
     @Override
     public SortedMap<String, SortedSet<String>> claimQueues(String regionserver) {
         SortedMap<String, SortedSet<String>> queues = new TreeMap<String, SortedSet<String>>();
+        if (isThisOurRegionServer(regionserver)) {
+            return queues;
+        }
         try {
             ResultScanner queuesToClaim = this.getQueuesBelongingToServer(regionserver);
             for (Result queue : queuesToClaim) {
@@ -288,8 +293,22 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
 
     @Override
     public List<String> getListOfReplicators() {
-        // TODO
-        throw new NotImplementedException();
+
+        // scan all of the queues and return a list of all unique OWNER values
+
+        Set<String> peerServers = new TreeSet<String>();
+        try {
+            Scan scan = new Scan();
+            scan.addColumn(CF, OWNER);
+            ResultScanner allQueuesInCluster = replicationTable.getScanner(scan);
+            for (Result queue : allQueuesInCluster) {
+                peerServers.add(Bytes.toString(queue.getValue(CF, OWNER)));
+            }
+        } catch (IOException e) {
+            abortable.abort("Could not get list of replicators", e);
+        }
+        return new ArrayList<String>(peerServers);
+
     }
 
     @Override

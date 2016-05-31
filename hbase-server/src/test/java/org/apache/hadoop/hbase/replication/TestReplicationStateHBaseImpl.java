@@ -166,6 +166,7 @@ public class TestReplicationStateHBaseImpl {
             rq1.removeAllQueues();
             assertEquals(0, rq1.getAllQueues().size());
             assertNull(rq1.getLogsInQueue("Queue1"));
+            assertEquals(rq1.getListOfReplicators().size(), 0);
         } catch (ReplicationException e) {
             e.printStackTrace();
             fail("testAddLog received a ReplicationException");
@@ -177,6 +178,7 @@ public class TestReplicationStateHBaseImpl {
 
     @Test
     public void TestMultipleReplicationQueuesHBaseImpl () {
+
         assertEquals(0, rq1.getAllQueues().size());
         try {
             // Test adding in WAL files
@@ -220,12 +222,19 @@ public class TestReplicationStateHBaseImpl {
             assertEquals(7l, rq2.getLogPosition("Queue1", "WALLogFile1.1"));
             assertEquals(8l, rq2.getLogPosition("Queue2", "WALLogFile2.1"));
             assertEquals(9l, rq3.getLogPosition("Queue1", "WALLogFile1.1"));
+
+            assertEquals(rq1.getListOfReplicators().size(), 3);
+            assertEquals(rq2.getListOfReplicators().size(), 3);
+            assertEquals(rq3.getListOfReplicators().size(), 3);
         } catch (ReplicationException e) {
             e.printStackTrace();
             fail("testAddLogs threw a ReplicationException");
         }
         try {
             Map<String, SortedSet<String>> claimedQueuesFromRq2 = rq1.claimQueues(server2);
+            assertEquals(rq1.getListOfReplicators().size(), 2);
+            assertEquals(rq2.getListOfReplicators().size(), 2);
+            assertEquals(rq3.getListOfReplicators().size(), 2);
             assertEquals(2, claimedQueuesFromRq2.size());
             assertTrue(claimedQueuesFromRq2.containsKey("Queue1-hostname2.example.org,1234,-1"));
             assertTrue(claimedQueuesFromRq2.containsKey("Queue2-hostname2.example.org,1234,-1"));
@@ -242,8 +251,10 @@ public class TestReplicationStateHBaseImpl {
             assertEquals(0, rq2.getAllQueues().size());
             assertNull(rq2.getLogsInQueue("Queue1"));
             assertNull(rq2.getLogsInQueue("Queue2"));
-
             Map<String, SortedSet<String>> claimedQueuesFromRq1 = rq3.claimQueues(server1);
+            assertEquals(rq1.getListOfReplicators().size(), 1);
+            assertEquals(rq2.getListOfReplicators().size(), 1);
+            assertEquals(rq3.getListOfReplicators().size(), 1);
             assertEquals(5, claimedQueuesFromRq1.size());
             assertEquals(6, rq3.getAllQueues().size());
 
@@ -257,7 +268,6 @@ public class TestReplicationStateHBaseImpl {
         assertEquals(0, rq1.getAllQueues().size());
         assertEquals(0, rq2.getAllQueues().size());
         assertEquals(0, rq3.getAllQueues().size());
-
     }
 
     @After

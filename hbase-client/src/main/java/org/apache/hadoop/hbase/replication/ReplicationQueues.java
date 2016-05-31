@@ -83,13 +83,13 @@ public interface ReplicationQueues {
   /**
    * Get a list of all WALs in the given queue.
    * @param queueId a String that identifies the queue
-   * @return a list of WALs, null if no such queue exists for this server
+   * @return a list of WALs, null if the queue does not exist
    */
   List<String> getLogsInQueue(String queueId);
 
   /**
    * Get a list of all queues for this region server.
-   * @return a list of queueIds, an empty list if this region server is dead and has no outstanding queues
+   * @return a list of queueIds
    */
   List<String> getAllQueues();
 

@@ -161,7 +161,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
     }
     try {
       return ZKUtil.parseWALPositionFrom(bytes);
-    } catch (DeserializationException de) {
+    } catch (DeserializationException e) {
       LOG.warn("Failed to parse WALPosition for queueId=" + queueId + " and wal=" + filename
           + "znode content, continuing.");
     }
@@ -224,6 +224,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
     List<String> listOfQueues = null;
     try {
       listOfQueues = ZKUtil.listChildrenNoWatch(this.zookeeper, this.myQueuesZnode);
+
     } catch (KeeperException e) {
       this.abortable.abort("Failed to get a list of queues for region server: "
           + this.myQueuesZnode, e);

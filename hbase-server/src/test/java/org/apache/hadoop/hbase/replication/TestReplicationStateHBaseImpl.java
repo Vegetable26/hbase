@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hbase.replication;
 
-import junit.framework.Assert;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -35,12 +34,16 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.zookeeper.KeeperException;
+import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 import java.io.IOException;
+import java.util.List;
 
 import static junit.framework.TestCase.assertNull;
 import static org.junit.Assert.assertEquals;
@@ -56,6 +59,8 @@ public class TestReplicationStateHBaseImpl {
     private static HBaseTestingUtility utility;
     private static Connection connection;
     private static ReplicationQueues rqH;
+    private static ZooKeeperWatcher zkw;
+    private static String replicationZNode;
 
     private final String server1 = ServerName.valueOf("hostname1.example.org", 1234, -1L).toString();
 
@@ -67,25 +72,33 @@ public class TestReplicationStateHBaseImpl {
         conf.setClass("hbase.region.replica.replication.ReplicationQueuesType", ReplicationQueuesHBaseImpl.class,
                 ReplicationQueues.class);
         connection = ConnectionFactory.createConnection(conf);
+        zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
+        String replicationZNodeName = conf.get("zookeeper.znode.replication", "replication");
+        replicationZNode = ZKUtil.joinZNode(zkw.baseZNode, replicationZNodeName);
+    }
+
+    @Test
+    public void checkNamingSchema() throws Exception{
+        DummyServer ds = new DummyServer(server1);
+        rqH.init(server1);
+        assertTrue(rqH.isThisOurRegionServer(server1));
+        assertTrue(!rqH.isThisOurRegionServer(server1 + "a"));
+        assertTrue(!rqH.isThisOurRegionServer(null));
     }
 
     @Test
     public void testReplicationStateHBase () {
         DummyServer ds = new DummyServer(server1);
         try {
-            rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds, null));
+            rqH = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds, zkw));
             rqH.init(server1);
             // Check that the proper System Tables have been generated
             Table replicationTable = connection.getTable(TableName.REPLICATION_TABLE_NAME);
             assertTrue(replicationTable.getName().isSystemTable());
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
-            fail("testReplicationStateHBaseConstruction received an IOException");
-        } catch (ReplicationException e) {
-            e.printStackTrace();
-            fail("testReplicationStateHBaseConstruction received an ReplicationException");
-
+            fail("testReplicationStateHBaseConstruction received an Exception");
         }
         try {
             // Test adding in WAL files
@@ -157,6 +170,11 @@ public class TestReplicationStateHBaseImpl {
             e.printStackTrace();
             fail("testAddLog received a ReplicationException");
         }
+    }
+
+    @After
+    public void tearDown() throws KeeperException, IOException {
+        ZKUtil.deleteNodeRecursively(zkw, replicationZNode);
     }
 
     // TODO: Perhaps just inherit this from TestReplicationStateBase

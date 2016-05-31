@@ -1484,6 +1484,9 @@ public class HTableDescriptor implements Comparable<HTableDescriptor> {
               .setCacheDataInL1(true)
       });
 
+  public static final String REPLICATION_FAMILY_STR = "r";
+  public static final byte [] REPLICATION_FAMILY = Bytes.toBytes(REPLICATION_FAMILY_STR);
+
   public final static byte[] REPLICATION_COL_OWNER_BYTES = Bytes.toBytes("o");
   public final static byte[] REPLICATION_COL_QUEUE_ID_BYTES = Bytes.toBytes("q");
 
@@ -1497,13 +1500,12 @@ public class HTableDescriptor implements Comparable<HTableDescriptor> {
   public static final HTableDescriptor REPLICATION_TABLEDESC = new HTableDescriptor(
     TableName.REPLICATION_TABLE_NAME,
     new HColumnDescriptor[] {
-      new HColumnDescriptor(HConstants.REPLICATION_FAMILY)
+      new HColumnDescriptor(REPLICATION_FAMILY)
         .setMaxVersions(1)
         .setInMemory(true)
-        .setBlocksize(8 * 1024)
         .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-        // TODO: Figure out which bloom filter to actually use here
-        .setBloomFilterType(BloomType.ROW)
+        // TODO: Figure out which bloom filter to use
+        .setBloomFilterType(BloomType.NONE)
           // Enable cache of data blocks in L1 if more than one caching tier deployed:
           // e.g. if using CombinedBlockCache (BucketCache).
         .setCacheDataInL1(true),

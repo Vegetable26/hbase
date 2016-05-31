@@ -22,9 +22,7 @@ package org.apache.hadoop.hbase.replication;
 import org.apache.hadoop.conf.Configuration;
 
 import org.apache.hadoop.hbase.Abortable;
-import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 
@@ -43,6 +41,8 @@ import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.RetryCounter;
+import org.apache.hadoop.hbase.util.RetryCounterFactory;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.io.IOException;
@@ -52,7 +52,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.SortedSet;
-
 
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
@@ -64,7 +63,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private Abortable abortable = null;
     private String serverName = null;
 
-    private final byte[] CF = HConstants.REPLICATION_FAMILY;
+    private final byte[] CF = HTableDescriptor.REPLICATION_FAMILY;
     private final byte[] OWNER = HTableDescriptor.REPLICATION_COL_OWNER_BYTES;
     private final byte[] QUEUE_ID = HTableDescriptor.REPLICATION_COL_QUEUE_ID_BYTES;
     private final byte[] INITIAL_OFFSET = Bytes.toBytes(0L);
@@ -91,7 +90,10 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     public void removeQueue(String queueId) {
         try {
             byte[] rowKey = this.queueIdToRowKey(queueId);
+            // The rowkey will be null if the queue cannot be found in the Replication Table
             if (rowKey == null) {
+                abortable.abort("Could not remove queueId from queueId=" + queueId, new ReplicationException("Queue " +
+                  "not found queueId=" + queueId));
                 return;
             }
             Delete deleteQueue = new Delete(rowKey);
@@ -119,7 +121,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
                 replicationTable.put(putNewLog);
             }
         } catch (IOException e) {
-            throw new ReplicationException("Could not add queue queueId=" + queueId + " filename=" + filename);
+            abortable.abort("Could not add queue queueId=" + queueId + " filename=" + filename, e);
         }
     }
 
@@ -275,21 +277,20 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
      */
     private Table createAndGetReplicationTable() throws IOException{
         if (!replicationTableExists()) {
+            admin.createTable(HTableDescriptor.REPLICATION_TABLEDESC);
+        }
+        int maxRetries = conf.getInt("hbase.region.replica.replication.hbaseimpl.max_init_retries", 100);
+        RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, 100);
+        RetryCounter retryCounter = counterFactory.create();
+        while (!replicationTableExists()) {
             try {
-                admin.createTable(HTableDescriptor.REPLICATION_TABLEDESC);
-            } catch (TableExistsException e) {
-            }
-            int retries = 0;
-            int maxRetries = conf.getInt("hbase.region.replica.replication.hbaseimpl.max_init_retries", 100);
-            while (!replicationTableExists()) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
+                retryCounter.sleepUntilNextRetry();
+                if (!retryCounter.shouldRetry()) {
+                    throw new IOException("Unable to acquire the Replication Table");
                 }
-                retries++;
-                if (retries > maxRetries) {
-                    throw new IOException("Creating Replication Table timed out after " + retries + " retries");
-                }
+            } catch (InterruptedException e) {
+                // TODO: If we are shutting down we should just return immediately
+                return null;
             }
         }
         return connection.getTable(TableName.REPLICATION_TABLE_NAME);
@@ -300,8 +301,12 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
      * @return whether the Replication Table exists
      * @throws IOException
      */
-    private boolean replicationTableExists() throws IOException {
-        return admin.tableExists(TableName.REPLICATION_TABLE_NAME);
+    private boolean replicationTableExists() {
+        try {
+            return admin.tableExists(TableName.REPLICATION_TABLE_NAME);
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**
@@ -339,7 +344,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     /**
      * Finds the rowkey of the HBase row corresponding to the provided queue
      * @param queueId string representation of the queue id
-     * @return the rowkey of the corresponding queue
+     * @return the rowkey of the corresponding queue. This returns null if the corresponding queue cannot be found.
      * @throws IOException
      */
     private byte[] queueIdToRowKey(String queueId) throws IOException{

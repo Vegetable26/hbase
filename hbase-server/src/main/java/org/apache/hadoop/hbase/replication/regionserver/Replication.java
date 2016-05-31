@@ -137,7 +137,7 @@ public class Replication extends WALActionsListener.Base implements
         this.replicationTracker =
             ReplicationFactory.getReplicationTracker(server.getZooKeeper(), this.replicationPeers,
               this.conf, this.server, this.server);
-      } catch (ReplicationException e) {
+      } catch (Exception e) {
         throw new IOException("Failed replication handler create", e);
       }
       UUID clusterId = null;

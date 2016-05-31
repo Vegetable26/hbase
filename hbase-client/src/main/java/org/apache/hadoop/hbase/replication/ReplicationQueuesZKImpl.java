@@ -41,7 +41,8 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.zookeeper.KeeperException;
 
 /**
- * This class provides an implementation of the ReplicationQueues interface using ZooKeeper. The
+ * This class provides an implementation of the
+ * interface using ZooKeeper. The
  * base znode that this class works at is the myQueuesZnode. The myQueuesZnode contains a list of
  * all outstanding WAL files on this region server that need to be replicated. The myQueuesZnode is
  * the regionserver name (a concatenation of the region server’s hostname, client port and start
@@ -227,7 +228,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
       this.abortable.abort("Failed to get a list of queues for region server: "
           + this.myQueuesZnode, e);
     }
-    return listOfQueues;
+    return listOfQueues == null ? new ArrayList<String>() : listOfQueues;
   }
 
   /**

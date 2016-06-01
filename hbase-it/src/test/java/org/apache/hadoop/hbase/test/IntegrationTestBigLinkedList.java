@@ -191,6 +191,11 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
 
   protected static String DEFAULT_TABLE_NAME = "IntegrationTestBigLinkedList";
 
+  protected static String FLUSH_TABLE_NAME_KEY = "IntegrationTestBigLinkedListFlush.table";
+
+  protected static String DEFAULT_FLUSH_TABLE_NAME = "IntegrationTestBigLinkedListFlush";
+
+
   protected static byte[] FAMILY_NAME = Bytes.toBytes("meta");
   private static byte[] BIG_FAMILY_NAME = Bytes.toBytes("big");
   private static byte[] TINY_FAMILY_NAME = Bytes.toBytes("tiny");
@@ -232,6 +237,12 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
     byte[] key;
     byte[] prev;
     String client;
+    long count;
+  }
+
+  static class Flushed {
+    byte[] key;
+    String name;
     long count;
   }
 
@@ -555,6 +566,13 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
             admin.createTable(htd);
           }
         }
+
+        // Create the table used to track flushing
+        HTableDescriptor flushTableDescriptor = new HTableDescriptor(getFlushTableName(getConf()));
+
+
+
+
       } catch (MasterNotRunningException e) {
         LOG.error("Master not running", e);
         throw new IOException(e);
@@ -1533,6 +1551,10 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
 
   static TableName getTableName(Configuration conf) {
     return TableName.valueOf(conf.get(TABLE_NAME_KEY, DEFAULT_TABLE_NAME));
+  }
+
+  static TableName getFlushTableName(Configuration conf) {
+    return TableName.valueOf(conf.get(FLUSH_TABLE_NAME_KEY, DEFAULT_FLUSH_TABLE_NAME));
   }
 
   private static CINode getCINode(Result result, CINode node) {

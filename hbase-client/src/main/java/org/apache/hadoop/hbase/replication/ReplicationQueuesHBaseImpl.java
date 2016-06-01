@@ -44,6 +44,7 @@ import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.RetryCounter;
 import org.apache.hadoop.hbase.util.RetryCounterFactory;
+import org.apache.zookeeper.KeeperException;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.io.IOException;
@@ -58,13 +59,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 @InterfaceAudience.Private
-public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
+public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase implements ReplicationQueues{
 
-    private Configuration conf = null;
     private Admin admin = null;
     private Connection connection = null;
     private Table replicationTable = null;
-    private Abortable abortable = null;
     private String serverName = null;
 
     private final byte[] CF = HTableDescriptor.REPLICATION_FAMILY;
@@ -74,15 +73,11 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
     private final byte[] NEGATIVE_OFFSET = Bytes.toBytes(-1L);
 
     public ReplicationQueuesHBaseImpl(ReplicationQueuesArguments args) throws IOException {
-        this(args.getConf(), args.getAbort());
-    }
-
-    public ReplicationQueuesHBaseImpl(Configuration conf, Abortable abort) throws IOException {
-        this.conf = conf;
+        super(args.getZk(), args.getConf(), args.getAbort());
         this.connection = ConnectionFactory.createConnection(conf);
         this.admin = connection.getAdmin();
-        this.abortable = abort;
         replicationTable = createAndGetReplicationTable();
+
     }
 
     @Override
@@ -272,7 +267,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
             for (Result queue : queuesToClaim) {
                 if (claimQueueSuccess(queue, regionserver)) {
                     // TODO: Check whether the peer still exists before adding in the log
-                    if (peerExists()) {
+                    if (unsafePeerExists(Bytes.toString(queue.getValue(CF, QUEUE_ID)))) {
                         SortedSet<String> sortedLogs = new TreeSet<String>();
                         List<String> logs = getLogsInQueue(queue.getRow());
                         for (String log : logs) {
@@ -465,7 +460,13 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues{
      *
      * @return
      */
-    private boolean peerExists() {
+    private boolean unsafePeerExists(String peerId) {
+        System.out.println("Here I am");
+        try {
+            System.out.println("We know that peer " + peerId + ":" + Boolean.toString(peerExists(peerId)) + " exists");
+        } catch (KeeperException e) {
+            abortable.abort("Failed to find peer", new ReplicationException());
+        }
         // TODO: Implement
         return true;
     }

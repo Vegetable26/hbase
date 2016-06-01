@@ -67,6 +67,12 @@ public class TestReplicationStateHBaseImpl {
     private static ReplicationQueues rq1;
     private static ReplicationQueues rq2;
     private static ReplicationQueues rq3;
+    private static ReplicationPeers rp;
+
+    private static final String ID_ONE = "1";
+    private static final String ID_TWO = "2";
+    private static String KEY_ONE;
+    private static String KEY_TWO;
 
     private static final String server1 = ServerName.valueOf("hostname1.example.org", 1234, -1L).toString();
     private static final String server2 = ServerName.valueOf("hostname2.example.org", 1234, -1L).toString();
@@ -82,17 +88,21 @@ public class TestReplicationStateHBaseImpl {
         zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
         String replicationZNodeName = conf.get("zookeeper.znode.replication", "replication");
         replicationZNode = ZKUtil.joinZNode(zkw.baseZNode, replicationZNodeName);
-
         try {
             DummyServer ds1 = new DummyServer(server1);
-            rq1 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds1));
+            rq1 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds1, zkw));
             rq1.init(server1);
             DummyServer ds2 = new DummyServer(server2);
-            rq2 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds2));
+            rq2 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds2, zkw));
             rq2.init(server2);
             DummyServer ds3 = new DummyServer(server3);
-            rq3 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds3));
+            rq3 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds3, zkw));
             rq3.init(server3);
+            rp = ReplicationFactory.getReplicationPeers(zkw, conf, zkw);
+            rp.init();
+            rp.addPeer("Queue1", new ReplicationPeerConfig().setClusterKey("localhost:2818:/bogus1"));
+            rp.addPeer("Queue2", new ReplicationPeerConfig().setClusterKey("localhost:2818:/bogus2"));
+            rp.addPeer("Queue3", new ReplicationPeerConfig().setClusterKey("localhost:2818:/bogus3"));
         } catch (Exception e) {
             e.printStackTrace();
             fail("testReplicationStateHBaseConstruction received an Exception");

@@ -265,9 +265,9 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase implement
         try {
             ResultScanner queuesToClaim = this.getQueuesBelongingToServer(regionserver);
             for (Result queue : queuesToClaim) {
-                if (claimQueueSuccess(queue, regionserver)) {
+                if (attemptToClaimQueue(queue, regionserver)) {
                     // TODO: Check whether the peer still exists before adding in the log
-                    if (unsafePeerExists(Bytes.toString(queue.getValue(CF, QUEUE_ID)))) {
+                    if (checkPeerExists(Bytes.toString(queue.getValue(CF, QUEUE_ID)))) {
                         SortedSet<String> sortedLogs = new TreeSet<String>();
                         List<String> logs = getLogsInQueue(queue.getRow());
                         for (String log : logs) {
@@ -276,6 +276,8 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase implement
                         String newQueueId = buildClaimedQueueId(Bytes.toString(queue.getValue(CF, QUEUE_ID)),
                           regionserver);
                         queues.put(newQueueId, sortedLogs);
+                    } else {
+                        replicationTable.delete(new Delete(queue.getRow()));
                     }
                 }
             }
@@ -437,7 +439,7 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase implement
         return (result == null) ? null : result.getRow();
     }
 
-    private boolean claimQueueSuccess (Result queue, String originalServer) throws IOException{
+    private boolean attemptToClaimQueue (Result queue, String originalServer) throws IOException{
         Put putNewQueueOwner = new Put(queue.getRow());
         putNewQueueOwner.addColumn(CF, OWNER, Bytes.toBytes(serverName));
 
@@ -457,17 +459,17 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase implement
     }
 
     /**
-     *
-     * @return
+     * Checks if the peer pointed to by the peerId still exists
+     * @param peerId peer id of another cluster
+     * @return if the peer exists
      */
-    private boolean unsafePeerExists(String peerId) {
-        System.out.println("Here I am");
+    private boolean checkPeerExists(String peerId) {
+        ReplicationQueueInfo replicationQueueInfo = new ReplicationQueueInfo(peerId);
         try {
-            System.out.println("We know that peer " + peerId + ":" + Boolean.toString(peerExists(peerId)) + " exists");
+            return peerExists(replicationQueueInfo.getPeerId());
         } catch (KeeperException e) {
             abortable.abort("Failed to find peer", new ReplicationException());
         }
-        // TODO: Implement
-        return true;
+        return false;
     }
 }

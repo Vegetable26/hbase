@@ -261,10 +261,17 @@ public class TestReplicationStateHBaseImpl {
             assertEquals(0, rq2.getAllQueues().size());
             assertNull(rq2.getLogsInQueue("Queue1"));
             assertNull(rq2.getLogsInQueue("Queue2"));
+
+            // Check that non-existant peer id's are not claimed
+            rq1.addLog("UnclaimableQueue", "WALLogFile1.1");
+            rq1.addLog("UnclaimableQueue", "WALLogFile1.2");
+            assertEquals(6, rq1.getAllQueues().size());
+
             Map<String, SortedSet<String>> claimedQueuesFromRq1 = rq3.claimQueues(server1);
             assertEquals(rq1.getListOfReplicators().size(), 1);
             assertEquals(rq2.getListOfReplicators().size(), 1);
             assertEquals(rq3.getListOfReplicators().size(), 1);
+
             assertEquals(5, claimedQueuesFromRq1.size());
             assertEquals(6, rq3.getAllQueues().size());
 

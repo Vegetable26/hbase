@@ -64,6 +64,8 @@ public class IntegrationTestReplication extends IntegrationTestBigLinkedList {
   protected Integer width;
   protected Integer wrapMultiplier;
   protected boolean noReplicationSetup = false;
+  protected Integer numWalkers;
+  protected Long logEvery;
 
   private final String SOURCE_CLUSTER_OPT = "sourceCluster";
   private final String DEST_CLUSTER_OPT = "destCluster";
@@ -98,6 +100,10 @@ public class IntegrationTestReplication extends IntegrationTestBigLinkedList {
    */
   private final String NUM_NODES_OPT = "numNodes";
 
+  private final String NUM_WALKERS_OPT = "numWalkers";
+
+  private final String LOG_EVERY_OPT = "logEvery";
+
   private final int DEFAULT_NUM_MAPPERS = 1;
   private final int DEFAULT_NUM_REDUCERS = 1;
   private final int DEFAULT_NUM_ITERATIONS = 1;
@@ -105,6 +111,8 @@ public class IntegrationTestReplication extends IntegrationTestBigLinkedList {
   private final int DEFAULT_WIDTH = 1000000;
   private final int DEFAULT_WRAP_MULTIPLIER = 25;
   private final int DEFAULT_NUM_NODES = DEFAULT_WIDTH * DEFAULT_WRAP_MULTIPLIER;
+  private final int DEFAULT_NUM_WALKERS = 0;
+  private final long DEFAULT_LOG_EVERY = -1l;
 
   /**
    * Wrapper around an HBase ClusterID allowing us
@@ -267,7 +275,8 @@ public class IntegrationTestReplication extends IntegrationTestBigLinkedList {
       Generator generator = new Generator();
       generator.setConf(source.getConfiguration());
 
-      int retCode = generator.run(numMappers, numNodes, generatorOutput, width, wrapMultiplier);
+      int retCode = generator.run(numMappers, numNodes, generatorOutput, width, wrapMultiplier,
+          numWalkers, logEvery);
       if (retCode > 0) {
         throw new RuntimeException("Generator failed with return code: " + retCode);
       }
@@ -370,6 +379,10 @@ public class IntegrationTestReplication extends IntegrationTestBigLinkedList {
                   "Width of the linked list chain (default: " + DEFAULT_WIDTH + ")");
     addOptWithArg("wm", WRAP_MULTIPLIER_OPT, "How many times to wrap around (default: " +
                   DEFAULT_WRAP_MULTIPLIER + ")");
+    addOptWithArg("nw", NUM_WALKERS_OPT, "Number of concurrent walkers to run during Generation " +
+        "(default: " + DEFAULT_NUM_WALKERS+ ")");
+    addOptWithArg("l", LOG_EVERY_OPT, "Frequency of concurrent walker logging (default: " +
+        DEFAULT_LOG_EVERY + ")");
   }
 
   @Override
@@ -400,6 +413,10 @@ public class IntegrationTestReplication extends IntegrationTestBigLinkedList {
     wrapMultiplier = parseInt(cmd.getOptionValue(WRAP_MULTIPLIER_OPT,
                                                  Integer.toString(DEFAULT_WRAP_MULTIPLIER)),
                               1, Integer.MAX_VALUE);
+    numWalkers = parseInt(cmd.getOptionValue(NUM_WALKERS_OPT,
+        Integer.toString(DEFAULT_NUM_WALKERS)), 0, Integer.MAX_VALUE);
+    logEvery = parseLong(cmd.getOptionValue(LOG_EVERY_OPT, Long.toString(DEFAULT_LOG_EVERY)),
+        -1l, Long.MAX_VALUE);
 
     if (cmd.hasOption(NO_REPLICATION_SETUP_OPT)) {
       noReplicationSetup = true;

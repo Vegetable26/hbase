@@ -478,21 +478,22 @@ public class IntegrationTestBigLinkedListWithVisibility extends IntegrationTestB
 
     @Override
     protected void runGenerator(int numMappers, long numNodes, String outputDir, Integer width,
-        Integer wrapMuplitplier) throws Exception {
+        Integer wrapMultiplier, Integer numPriorityWalkers, Integer numRandomWalkers) throws Exception {
       Path outputPath = new Path(outputDir);
       UUID uuid = UUID.randomUUID(); // create a random UUID.
       Path generatorOutput = new Path(outputPath, uuid.toString());
 
       Generator generator = new VisibilityGenerator();
       generator.setConf(getConf());
-      int retCode = generator.run(numMappers, numNodes, generatorOutput, width, wrapMuplitplier);
+      int retCode = generator.run(numMappers, numNodes, generatorOutput, width, wrapMultiplier,
+          numPriorityWalkers, numRandomWalkers);
       if (retCode > 0) {
         throw new RuntimeException("Generator failed with return code: " + retCode);
       }
     }
 
     protected void runDelete(int numMappers, long numNodes, String outputDir, Integer width,
-        Integer wrapMuplitplier, int tableIndex) throws Exception {
+        Integer wrapMultiplier, int tableIndex) throws Exception {
       LOG.info("Running copier on table "+IntegrationTestBigLinkedListWithVisibility.getTableName(tableIndex));
       Copier copier = new Copier(
           IntegrationTestBigLinkedListWithVisibility.getTableName(tableIndex), tableIndex, true);
@@ -582,7 +583,8 @@ public class IntegrationTestBigLinkedListWithVisibility extends IntegrationTestB
         System.err
             .println("Usage: Loop <num iterations> " +
                 "<num mappers> <num nodes per mapper> <output dir> " +
-                "<num reducers> [<width> <wrap multiplier>]");
+                "<num reducers> [<width> <wrap multiplier> <num concurrent walker> " +
+                "<log every # nodes>]");
         return 1;
       }
       LOG.info("Running Loop with args:" + Arrays.deepToString(args));
@@ -593,8 +595,7 @@ public class IntegrationTestBigLinkedListWithVisibility extends IntegrationTestB
       String outputDir = args[3];
       int numReducers = Integer.parseInt(args[4]);
       Integer width = (args.length < 6) ? null : Integer.parseInt(args[5]);
-      Integer wrapMuplitplier = (args.length < 7) ? null : Integer.parseInt(args[6]);
-
+      Integer wrapMultiplier = (args.length < 7) ? null : Integer.parseInt(args[6]);
       long expectedNumNodes = 0;
 
       if (numIterations < 0) {
@@ -604,7 +605,8 @@ public class IntegrationTestBigLinkedListWithVisibility extends IntegrationTestB
       for (int i = 0; i < numIterations; i++) {
         LOG.info("Starting iteration = " + i);
         LOG.info("Generating data");
-        runGenerator(numMappers, numNodes, outputDir, width, wrapMuplitplier);
+        // By default run no concurrent walkers for test with visibility
+        runGenerator(numMappers, numNodes, outputDir, width, wrapMultiplier, 0, 0);
         expectedNumNodes += numMappers * numNodes;
         // Copying wont work because expressions are not returned back to the
         // client
@@ -617,7 +619,7 @@ public class IntegrationTestBigLinkedListWithVisibility extends IntegrationTestB
         sleep(SLEEP_IN_MS);
         for (int j = 0; j < DEFAULT_TABLES_COUNT; j++) {
           LOG.info("Deleting data on table with index: "+j);
-          runDelete(numMappers, numNodes, outputDir, width, wrapMuplitplier, j);
+          runDelete(numMappers, numNodes, outputDir, width, wrapMultiplier, j);
           sleep(SLEEP_IN_MS);
           LOG.info("Verifying common table after deleting");
           runVerify(outputDir, numReducers, expectedNumNodes, j);

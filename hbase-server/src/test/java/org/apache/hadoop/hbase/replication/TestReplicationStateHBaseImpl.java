@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hbase.replication;
 
+import junit.framework.Assert;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
@@ -99,8 +100,9 @@ public class TestReplicationStateHBaseImpl {
       assertEquals(4, rqH.getLogsInQueue("Queue1").size());
       assertEquals(1, rqH.getLogsInQueue("Queue2").size());
       assertEquals(1, rqH.getLogsInQueue("Queue3").size());
-      // Make sure that getting a log from a non-existent queue triggers an abort
+      // Make sure that abortCount is still 0
       assertEquals(0, ds.getAbortCount());
+      // Make sure that getting a log from a non-existent queue triggers an abort
       assertNull(rqH.getLogsInQueue("Queue4"));
       assertEquals(1, ds.getAbortCount());
     } catch (ReplicationException e) {
@@ -108,6 +110,7 @@ public class TestReplicationStateHBaseImpl {
       fail("testAddLog received a ReplicationException");
     }
     try {
+
       // Test updating the log positions
       assertEquals(0L, rqH.getLogPosition("Queue1", "WALLogFile1.1"));
       rqH.setLogPosition("Queue1", "WALLogFile1.1", 123L);
@@ -119,7 +122,7 @@ public class TestReplicationStateHBaseImpl {
       rqH.setLogPosition("Queue3", "WALLogFile3.1", 243L);
       assertEquals(243L, rqH.getLogPosition("Queue3", "WALLogFile3.1"));
 
-      // Test if writing to non-existent queue results in abort
+      // Test that setting log positions in non-existing logs will cause an abort
       assertEquals(1, ds.getAbortCount());
       rqH.setLogPosition("NotHereQueue", "WALLogFile3.1", 243L);
       assertEquals(2, ds.getAbortCount());
@@ -146,12 +149,16 @@ public class TestReplicationStateHBaseImpl {
       assertEquals(3, rqH.getLogsInQueue("Queue1").size());
       // Test removing queues
       rqH.removeQueue("Queue2");
-      assertNull(rqH.getLogsInQueue("Queue2"));
       assertEquals(2, rqH.getAllQueues().size());
+      assertNull(rqH.getLogsInQueue("Queue2"));
+      // Test that getting logs from a non-existent queue aborts
+      assertEquals(5, ds.getAbortCount());
       // Test removing all queues for a Region Server
       rqH.removeAllQueues();
       assertEquals(0, rqH.getAllQueues().size());
       assertNull(rqH.getLogsInQueue("Queue1"));
+      // Test that getting logs from a non-existent queue aborts
+      assertEquals(6, ds.getAbortCount());
     } catch (ReplicationException e) {
       e.printStackTrace();
       fail("testAddLog received a ReplicationException");

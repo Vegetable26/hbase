@@ -34,9 +34,11 @@ import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.filter.CompareFilter;
@@ -80,7 +82,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
 
   // Common byte values used in replication offset tracking
   private static final byte[] INITIAL_OFFSET = Bytes.toBytes(0L);
-  private static final byte[] NEGATIVE_OFFSET = Bytes.toBytes(-1L);
+
 
   /*
    * Make sure that HBase table operations for replication have a high number of retries. This is
@@ -98,6 +100,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
   private Table replicationTable = null;
   private Abortable abortable = null;
   private String serverName = null;
+  private byte[] serverNameBytes = null;
 
   public ReplicationQueuesHBaseImpl(ReplicationQueuesArguments args) throws IOException {
     this(args.getConf(), args.getAbort());
@@ -119,6 +122,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
   @Override
   public void init(String serverName) throws ReplicationException {
     this.serverName = serverName;
+    this.serverNameBytes = Bytes.toBytes(serverName);
   }
 
   @Override
@@ -127,14 +131,14 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
       byte[] rowKey = this.queueIdToRowKey(queueId);
       // The rowkey will be null if the queue cannot be found in the Replication Table
       if (rowKey == null) {
-        abortable.abort("Could not remove queueId from queueId=" + queueId,
-            new ReplicationException("Queue " + "not found queueId=" + queueId));
+        String errMsg = "Could not remove non-existent queue with queueId=" + queueId;
+        abortable.abort(errMsg, new ReplicationException(errMsg));
         return;
       }
       Delete deleteQueue = new Delete(rowKey);
-      replicationTable.delete(deleteQueue);
+      safeQueueUpdate(deleteQueue);
     } catch (IOException e) {
-      abortable.abort("Could not remove queueId from queueId=" + queueId, e);
+      abortable.abort("Could not remove queue with queueId=" + queueId, e);
     }
   }
 
@@ -153,7 +157,7 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
         // Otherwise simply add the new log and offset as a new column
         Put putNewLog = new Put(this.queueIdToRowKey(queueId));
         putNewLog.addColumn(CF, Bytes.toBytes(filename), INITIAL_OFFSET);
-        replicationTable.put(putNewLog);
+        safeQueueUpdate(putNewLog);
       }
     } catch (IOException e) {
       abortable.abort("Could not add queue queueId=" + queueId + " filename=" + filename, e);
@@ -165,13 +169,14 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
     try {
       byte[] rowKey = this.queueIdToRowKey(queueId);
       if (rowKey == null) {
-        abortable.abort("Could not remove non-existent log from queueId=" + queueId + ", filename="
-            + filename, new ReplicationException());
+        String errMsg = "Could not remove log from non-existent queueId=" + queueId + ", filename="
+          + filename;
+        abortable.abort(errMsg, new ReplicationException(errMsg));
         return;
       }
       Delete delete = new Delete(rowKey);
       delete.addColumns(CF, Bytes.toBytes(filename));
-      replicationTable.delete(delete);
+      safeQueueUpdate(delete);
     } catch (IOException e) {
       abortable.abort("Could not remove log from queueId=" + queueId + ", filename=" + filename, e);
     }
@@ -182,19 +187,24 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
     try {
       byte[] rowKey = this.queueIdToRowKey(queueId);
       if (rowKey == null) {
-        abortable.abort("Could not set position of non-existent log from queueId=" + queueId +
-            ", filename=" + filename, new ReplicationException());
+        String errMsg = "Could not set position of log from non-existent queueId=" + queueId +
+          ", filename=" + filename;
+        abortable.abort(errMsg, new ReplicationException(errMsg));
         return;
       }
+      // Check that the log currently exists
+      Get checkLogExists = new Get(rowKey);
+      checkLogExists.addColumn(CF, Bytes.toBytes(filename));
+      if (!replicationTable.exists(checkLogExists)) {
+        String errMsg = "Could not set position of non-existent log from queueId=" + queueId +
+          ", filename=" + filename;
+        abortable.abort(errMsg, new ReplicationException(errMsg));
+        return;
+      }
+      // Update the log offset if it exists
       Put walAndOffset = new Put(rowKey);
       walAndOffset.addColumn(CF, Bytes.toBytes(filename), Bytes.toBytes(position));
-      // Check if the log file currently exists as a column. This can be done by checking if an
-      // offset exists for the file, any offset must be non-zero
-      if (!replicationTable.checkAndPut(rowKey, CF, Bytes.toBytes(filename),
-        CompareFilter.CompareOp.GREATER, NEGATIVE_OFFSET, walAndOffset)) {
-        abortable.abort("Failed to write replication wal position (filename=" + filename +
-            ", position=" + position + ")", new ReplicationException());
-      }
+      safeQueueUpdate(walAndOffset);
     } catch (IOException e) {
       abortable.abort("Failed to write replication wal position (filename=" + filename +
           ", position=" + position + ")", e);
@@ -237,8 +247,8 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
     try {
       byte[] rowKey = this.queueIdToRowKey(queueId);
       if (rowKey == null) {
-        abortable.abort("Could not get logs from non-existent queueId=" + queueId,
-            new ReplicationException());
+        String errMsg = "Could not get logs from non-existent queueId=" + queueId;
+        abortable.abort(errMsg, new ReplicationException(errMsg));
         return null;
       }
       Get getQueue = new Get(rowKey);
@@ -345,6 +355,11 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
     }
   }
 
+  /**
+   * Create the replication table with the provided HColumnDescriptor REPLICATION_COL_DESCRIPTOR
+   * in ReplicationQueuesHBaseImpl
+   * @throws IOException
+   */
   private void createReplicationTable() throws IOException {
     HTableDescriptor replicationTableDescriptor = new HTableDescriptor(REPLICATION_TABLE_NAME);
     replicationTableDescriptor.addFamily(REPLICATION_COL_DESCRIPTOR);
@@ -360,6 +375,54 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
    */
   private String buildServerQueueName(String queueId) {
     return serverName + "-" + queueId;
+  }
+  
+  /**
+   * See safeQueueUpdate(RowMutations mutate)
+   * @param put Row mutation to perform on the queue
+   */
+  private void safeQueueUpdate(Put put) {
+    RowMutations mutations = new RowMutations(put.getRow());
+    try {
+      mutations.add(put);
+    } catch (IOException e){
+      abortable.abort("Failed to update Replication Table because of IOException", e);
+    }
+    safeQueueUpdate(mutations);
+  }
+
+  /**
+   * See safeQueueUpdate(RowMutations mutate)
+   * @param delete Row mutation to perform on the queue
+   */
+  private void safeQueueUpdate(Delete delete) {
+    RowMutations mutations = new RowMutations(delete.getRow());
+    try {
+      mutations.add(delete);
+    } catch (IOException e) {
+      abortable.abort("Failed to update Replication Table because of IOException", e);
+    }
+    safeQueueUpdate(mutations);
+  }
+
+  /**
+   * Attempt to mutate a given queue in the Replication Table with a checkAndPut on the OWNER column
+   * of the queue. Abort the server if this checkAndPut fails: which means we have somehow lost
+   * ownership of the column or an IO Exception has occurred during the transaction.
+   *
+   * @param mutate Mutation to perform on a given queue
+   */
+  private void safeQueueUpdate(RowMutations mutate) {
+    try {
+      boolean updateSuccess = replicationTable.checkAndMutate(mutate.getRow(), CF, COL_OWNER,
+        CompareFilter.CompareOp.EQUAL, serverNameBytes, mutate);
+      if (!updateSuccess) {
+        String errMsg = "Failed to update Replication Table because we lost queue ownership";
+        abortable.abort(errMsg, new ReplicationException(errMsg));
+      }
+    } catch (IOException e) {
+      abortable.abort("Failed to update Replication Table because of IOException", e);
+    }
   }
 
   /**
@@ -384,11 +447,21 @@ public class ReplicationQueuesHBaseImpl implements ReplicationQueues {
     return queues;
   }
 
-  // TODO: We can cache queueId's if ReplicationQueuesHBaseImpl becomes a bottleneck. We currently
-  // TODO: perform scan's over all the rows looking for one with a matching QueueId.
-
   /**
-   * Finds the rowkey of the HBase row corresponding to the provided queue
+   * Finds the row key of the HBase row corresponding to the provided queue. This has to be done,
+   * because the row key is [original server name + "-" + queueId0]. And the original server will
+   * make calls to getLog(), getQueue(), etc. with the argument queueId = queueId0.
+   * On the original server we can build the row key by concatenating servername + queueId0.
+   * Yet if the queue is claimed by another server, future calls to getLog(), getQueue(), etc.
+   * will be made with the argument queueId = queueId0 + "-" + pastOwner0 + "-" + pastOwner1 ...
+   * so we need a way to look up rows by their modified queueId's.
+   *
+   * TODO: Consider updating the queueId passed to getLog, getQueue()... inside of ReplicationSource
+   * TODO: and ReplicationSourceManager or the parsing of the passed in queueId's so that we don't
+   * TODO have to scan the table for row keys for each update. See HBASE-15956.
+   *
+   * TODO: We can also cache queueId's if ReplicationQueuesHBaseImpl becomes a bottleneck. We
+   * TODO: currently perform scan's over all the rows looking for one with a matching QueueId.
    *
    * @param queueId string representation of the queue id
    * @return the rowkey of the corresponding queue. This returns null if the corresponding queue

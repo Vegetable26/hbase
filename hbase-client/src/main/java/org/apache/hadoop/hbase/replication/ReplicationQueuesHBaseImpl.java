@@ -19,6 +19,8 @@
 
 package org.apache.hadoop.hbase.replication;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 
 import org.apache.hadoop.hbase.Abortable;
@@ -78,6 +80,7 @@ import java.util.TreeSet;
 public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase
     implements ReplicationQueues {
 
+  private static final Log LOG = LogFactory.getLog(ReplicationQueuesHBaseImpl.class);
 
   /** Name of the HBase Table used for tracking replication*/
   public static final TableName REPLICATION_TABLE_NAME =
@@ -327,8 +330,8 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase
       queuesToClaim = this.getQueuesBelongingToServer(regionserver);
       for (Result queue : queuesToClaim) {
         if (attemptToClaimQueue(queue, regionserver)) {
-          ReplicationQueueInfo replicationQueueInfo = new ReplicationQueueInfo(Bytes.toString(
-              queue.getValue(CF, COL_QUEUE_ID)));
+          String oldQueueId = Bytes.toString(queue.getValue(CF, COL_QUEUE_ID));
+          ReplicationQueueInfo replicationQueueInfo = new ReplicationQueueInfo(oldQueueId);
           if (peerExists(replicationQueueInfo.getPeerId())) {
             SortedSet<String> sortedLogs = new TreeSet<String>();
             List<String> logs = getLogsInQueue(queue.getRow());
@@ -338,9 +341,13 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase
             String newQueueId = buildClaimedQueueId(Bytes.toString(queue.getValue(CF,
                 COL_QUEUE_ID)), regionserver);
             queues.put(newQueueId, sortedLogs);
+            LOG.info(serverName + " has claimed queue " + oldQueueId + " from " + regionserver +
+                " now named: " + newQueueId);
           } else {
             // Delete orphaned queues
             safeQueueUpdate(new Delete(queue.getRow()));
+            LOG.info(serverName + " has deleted abandoned queue " + oldQueueId + " from " +
+                regionserver);
           }
         }
       }
@@ -578,7 +585,9 @@ public class ReplicationQueuesHBaseImpl extends ReplicationStateZKBase
       results.close();
       return (result == null) ? null : result.getRow();
     } finally {
-      results.close();
+      if (results != null) {
+        results.close();
+      }
     }
   }
 

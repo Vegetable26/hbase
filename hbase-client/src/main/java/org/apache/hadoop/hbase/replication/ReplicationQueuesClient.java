@@ -19,6 +19,7 @@
 package org.apache.hadoop.hbase.replication;
 
 import java.util.List;
+import java.util.Set;
 
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
@@ -61,13 +62,6 @@ public interface ReplicationQueuesClient {
   List<String> getAllQueues(String serverName) throws KeeperException;
 
   /**
-   * Get the cversion of replication rs node. This can be used as optimistic locking to get a
-   * consistent snapshot of the replication queues.
-   * @return cversion of replication rs node
-   */
-  int getQueuesZNodeCversion() throws KeeperException;
-
-  /**
    * Get the change version number of replication hfile references node. This can be used as
    * optimistic locking to get a consistent snapshot of the replication queues of hfile references.
    * @return change version number of hfile references node
@@ -88,4 +82,12 @@ public interface ReplicationQueuesClient {
    * @throws KeeperException zookeeper exception
    */
   List<String> getReplicableHFiles(String peerId) throws KeeperException;
+
+  /**
+   * Load all wals in all replication queues. This method guarantees to return a
+   * snapshot which contains all WALs at the start of this call even if there
+   * is concurrent queue failover. However, some newly created WALs during the call may
+   * not be included.
+   */
+  Set<String> getAllWALs() throws KeeperException;
 }

@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.replication;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
@@ -31,6 +32,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Implements the ReplicationQueuesClient interface on top of the Replication Table. It utilizes
+ * the ReplicationTableClient to access the Replication Table.
+ */
+@InterfaceAudience.Private
 public class ReplicationQueuesClientHBaseImpl extends ReplicationTableClient
     implements ReplicationQueuesClient {
 

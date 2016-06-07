@@ -16,7 +16,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
 package org.apache.hadoop.hbase.replication;
 
 import org.apache.commons.logging.Log;
@@ -67,16 +66,11 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+
 /**
  * This class provides an implementation of the ReplicationQueues interface using an HBase table
- * "Replication Table". The basic schema of this table will store each individual queue as a
- * seperate row. The row key will be a unique identifier of the creating server's name and the
- * queueId. Each queue must have the following two columns:
- *  COL_OWNER: tracks which server is currently responsible for tracking the queue
- *  COL_QUEUE_ID: tracks the queue's id as stored in ReplicationSource
- * They will also have columns mapping [WAL filename : offset]
+ * "Replication Table". It utilizes the ReplicationTableClient to access the Replication Table.
  */
-
 @InterfaceAudience.Private
 public class ReplicationQueuesHBaseImpl extends ReplicationTableClient
     implements ReplicationQueues {

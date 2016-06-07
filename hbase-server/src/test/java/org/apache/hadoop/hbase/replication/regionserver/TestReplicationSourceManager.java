@@ -67,7 +67,7 @@ import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
-import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesClientZKImpl;
 import org.apache.hadoop.hbase.replication.ReplicationSourceDummy;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
 import org.apache.hadoop.hbase.replication.regionserver.ReplicationSourceManager.NodeFailoverWorker;
@@ -413,8 +413,10 @@ public class TestReplicationSourceManager {
     server.abort("", null);
   }
 
+  // This is a ReplicationQueuesClientZKImpl specific test. It will not work for
+  // ReplicationQueuesClientHBaseImpl
   @Test
-  public void testFailoverDeadServerCversionChange() throws Exception {
+  public void testFailoverDeadServerCversionChangeZkImpl() throws Exception {
     LOG.debug("testFailoverDeadServerCversionChange");
 
     conf.setBoolean(HConstants.ZOOKEEPER_USEMULTI, true);
@@ -436,8 +438,9 @@ public class TestReplicationSourceManager {
           s1.getZooKeeper()));
     rq1.init(s1.getServerName().toString());
 
-    ReplicationQueuesClient client =
-        ReplicationFactory.getReplicationQueuesClient(s1.getZooKeeper(), s1.getConfiguration(), s1);
+    ReplicationQueuesClientZKImpl client =
+        (ReplicationQueuesClientZKImpl) ReplicationFactory.getReplicationQueuesClient(
+        s1.getZooKeeper(), s1.getConfiguration(), s1);
 
     int v0 = client.getQueuesZNodeCversion();
     rq1.claimQueues(s0.getServerName().getServerName());

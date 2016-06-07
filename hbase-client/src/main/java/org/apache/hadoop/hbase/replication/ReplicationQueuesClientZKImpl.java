@@ -39,6 +39,10 @@ public class ReplicationQueuesClientZKImpl extends ReplicationStateZKBase implem
 
   Log LOG = LogFactory.getLog(ReplicationQueuesClientZKImpl.class);
 
+  public ReplicationQueuesClientZKImpl(ReplicationQueuesClientArguments args) {
+    super(args.getZk(), args.getConf(), args.getAbortable());
+  }
+
   public ReplicationQueuesClientZKImpl(final ZooKeeperWatcher zk, Configuration conf,
       Abortable abortable) {
     super(zk, conf, abortable);

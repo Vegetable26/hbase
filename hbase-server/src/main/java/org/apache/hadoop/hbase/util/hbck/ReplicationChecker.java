@@ -33,11 +33,11 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.client.ClusterConnection;
-import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesClientArguments;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
 import org.apache.hadoop.hbase.util.HBaseFsck;
 import org.apache.hadoop.hbase.util.HBaseFsck.ErrorReporter;
@@ -67,13 +67,14 @@ public class ReplicationChecker {
     try {
       this.zkw = zkw;
       this.errorReporter = errorReporter;
-      this.queuesClient = ReplicationFactory.getReplicationQueuesClient(zkw, conf, connection);
+      this.queuesClient = ReplicationFactory.getReplicationQueuesClient(
+          new ReplicationQueuesClientArguments(conf, connection, zkw));
       this.queuesClient.init();
       this.replicationPeers = ReplicationFactory.getReplicationPeers(zkw, conf, this.queuesClient,
         connection);
       this.replicationPeers.init();
       this.queueDeletor = new ReplicationQueueDeletor(zkw, conf, connection);
-    } catch (ReplicationException e) {
+    } catch (Exception e) {
       throw new IOException("failed to construct ReplicationChecker", e);
     }
 

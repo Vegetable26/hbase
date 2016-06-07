@@ -25,6 +25,7 @@ import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.replication.regionserver.Replication;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
@@ -57,8 +58,11 @@ public class TestReplicationStateHBaseImpl {
   private static ReplicationQueues rq1;
   private static ReplicationQueues rq2;
   private static ReplicationQueues rq3;
+  private static ReplicationQueuesClient rqc;
   private static ReplicationPeers rp;
 
+  private static final String server0 = ServerName.valueOf("hostname0.example.org", 1234, -1L)
+      .toString();
   private static final String server1 = ServerName.valueOf("hostname1.example.org", 1234, -1L)
       .toString();
   private static final String server2 = ServerName.valueOf("hostname2.example.org", 1234, -1L)
@@ -66,6 +70,7 @@ public class TestReplicationStateHBaseImpl {
   private static final String server3 = ServerName.valueOf("hostname3.example.org", 1234, -1L)
       .toString();
 
+  private static DummyServer ds0;
   private static DummyServer ds1;
   private static DummyServer ds2;
   private static DummyServer ds3;
@@ -77,13 +82,16 @@ public class TestReplicationStateHBaseImpl {
     conf = utility.getConfiguration();
     conf.setClass("hbase.region.replica.replication.ReplicationQueuesType",
         ReplicationQueuesHBaseImpl.class, ReplicationQueues.class);
-    conf.setClass("hbase.region.replica.replication.ReplicationQueuesType",
-        ReplicationQueuesHBaseImpl.class, ReplicationQueues.class);
+    conf.setClass("hbase.region.replica.replication.ReplicationQueuesClientType",
+        ReplicationQueuesClientHBaseImpl.class, ReplicationQueuesClient.class);
     zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
     String replicationZNodeName = conf.get("zookeeper.znode.replication", "replication");
     replicationZNode = ZKUtil.joinZNode(zkw.baseZNode, replicationZNodeName);
 
     try {
+      ds0 = new DummyServer(server0);
+      rqc = ReplicationFactory.getReplicationQueuesClient(new ReplicationQueuesClientArguments(
+        conf, ds0));
       ds1 = new DummyServer(server1);
       rq1 = ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(conf, ds1, zkw));
       rq1.init(server1);

@@ -67,6 +67,7 @@ import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesClientArguments;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClientZKImpl;
 import org.apache.hadoop.hbase.replication.ReplicationSourceDummy;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
@@ -288,8 +289,8 @@ public class TestReplicationSourceManager {
 
 
     ReplicationQueues rq =
-        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
-          server.getZooKeeper()));
+        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(
+          server.getConfiguration(), server, server.getZooKeeper()));
     rq.init(server.getServerName().toString());
     // populate some znodes in the peer znode
     files.add("log1");
@@ -440,7 +441,7 @@ public class TestReplicationSourceManager {
 
     ReplicationQueuesClientZKImpl client =
         (ReplicationQueuesClientZKImpl) ReplicationFactory.getReplicationQueuesClient(
-        s1.getZooKeeper(), s1.getConfiguration(), s1);
+        new ReplicationQueuesClientArguments(s1.getConfiguration(), s1, s1.getZooKeeper()));
 
     int v0 = client.getQueuesZNodeCversion();
     rq1.claimQueues(s0.getServerName().getServerName());

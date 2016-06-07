@@ -31,8 +31,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class ReplicationQueuesClientHBaseImpl extends ReplicationTableClient implements ReplicationQueuesClient {
+public class ReplicationQueuesClientHBaseImpl extends ReplicationTableClient
+    implements ReplicationQueuesClient {
 
+  public ReplicationQueuesClientHBaseImpl(ReplicationQueuesClientArguments args) throws IOException {
+    super(args.getConf(), args.getAbortable());
+  }
   public ReplicationQueuesClientHBaseImpl(Configuration conf,
       Abortable abortable) throws IOException {
     super(conf, abortable);

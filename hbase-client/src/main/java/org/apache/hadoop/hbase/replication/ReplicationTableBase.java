@@ -106,7 +106,7 @@ abstract class ReplicationTableBase {
   * before the server is aborted.
   */
   private static final int DEFAULT_CLIENT_RETRIES = 240;
-  private static final int DEFAULT_CLIENT_PAUSE = 5000;
+  private static final int DEFAULT_CLIENT_PAUSE = 100;
   private static final int DEFAULT_RPC_TIMEOUT = 60000;
 
   /*
@@ -427,7 +427,7 @@ abstract class ReplicationTableBase {
     public void run() {
       try {
         initConf = buildTableInitConf();
-        initConnection = ConnectionFactory.createConnection();
+        initConnection = ConnectionFactory.createConnection(initConf);
         initAdmin = initConnection.getAdmin();
         createReplicationTable();
         int maxRetries = conf.getInt("hbase.replication.createtable.retries.number",

@@ -45,6 +45,8 @@ public class TestTableBasedReplicationSourceManagerImpl extends TestReplicationS
       ReplicationSourceDummy.class.getCanonicalName());
     conf.setBoolean(HConstants.REPLICATION_ENABLE_KEY,
       HConstants.REPLICATION_ENABLE_DEFAULT);
+    // To make the Unit Test's run faster we set a lower pause value for table initialization
+    conf.setInt("hbase.replication.table.init.pause", 1000);
     conf.setLong("replication.sleep.before.failover", 2000);
     conf.setInt("replication.source.maxretriesmultiplier", 10);
 

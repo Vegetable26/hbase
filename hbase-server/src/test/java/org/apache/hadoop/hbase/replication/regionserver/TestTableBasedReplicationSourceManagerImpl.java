@@ -47,11 +47,12 @@ public class TestTableBasedReplicationSourceManagerImpl extends TestReplicationS
       HConstants.REPLICATION_ENABLE_DEFAULT);
     conf.setLong("replication.sleep.before.failover", 2000);
     conf.setInt("replication.source.maxretriesmultiplier", 10);
-
-    conf.setClass("hbase.region.replica.replication.ReplicationQueuesType",
+    conf.setClass("hbase.region.replica.replication.replicationQueues.class",
       TableBasedReplicationQueuesImpl.class, ReplicationQueues.class);
     conf.setClass("hbase.region.replica.replication.ReplicationQueuesClientType",
       TableBasedReplicationQueuesClientImpl.class, ReplicationQueuesClient.class);
+    // Set the table initialization pause lower to speed up the test
+    conf.setInt("hbase.replication.table.init.pause", 100);
     utility = new HBaseTestingUtility(conf);
     utility.startMiniCluster();
     setupZkAndReplication();

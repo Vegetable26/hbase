@@ -58,6 +58,8 @@ public class TestReplicationTableBase {
       TableBasedReplicationQueuesImpl.class, ReplicationQueues.class);
     conf.setClass("hbase.region.replica.replication.replicationQueuesClient.class",
       TableBasedReplicationQueuesClientImpl.class, ReplicationQueuesClient.class);
+    // Set the table initialization pause lower to speed up the test
+    conf.setInt("hbase.replication.table.init.pause", 100);
     zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
     utility.waitFor(0, TIME_OUT_MILLIS, new Waiter.ExplainingPredicate<Exception>() {
       @Override

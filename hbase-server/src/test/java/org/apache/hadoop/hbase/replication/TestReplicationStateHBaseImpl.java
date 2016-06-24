@@ -84,7 +84,9 @@ public class TestReplicationStateHBaseImpl {
     conf.setClass("hbase.region.replica.replication.replicationQueues.class",
       TableBasedReplicationQueuesImpl.class, ReplicationQueues.class);
     conf.setClass("hbase.region.replica.replication.replicationQueuesClient.class",
-      TableBasedReplicationQueuesClientImpl.class, ReplicationQueuesClient.class);
+        TableBasedReplicationQueuesClientImpl.class, ReplicationQueuesClient.class);
+    // Set the table initialization pause lower to speed up the test
+    conf.setInt("hbase.replication.table.init.pause", 100);
     utility.startMiniCluster();
     zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
     String replicationZNodeName = conf.get("zookeeper.znode.replication", "replication");

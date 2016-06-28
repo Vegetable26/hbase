@@ -19,11 +19,11 @@
 package org.apache.hadoop.hbase.replication;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.SortedMap;
-import java.util.SortedSet;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -70,6 +70,10 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
   private final static String RS_LOCK_ZNODE = "lock";
 
   private static final Log LOG = LogFactory.getLog(ReplicationQueuesZKImpl.class);
+
+  public ReplicationQueuesZKImpl(ReplicationQueuesArguments args) {
+    this(args.getZk(), args.getConf(), args.getAbortable());
+  }
 
   public ReplicationQueuesZKImpl(final ZooKeeperWatcher zk, Configuration conf,
       Abortable abortable) {
@@ -168,13 +172,13 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
   }
 
   @Override
-  public boolean isThisOurZnode(String znode) {
-    return ZKUtil.joinZNode(this.queuesZNode, znode).equals(this.myQueuesZnode);
+  public boolean isThisOurRegionServer(String regionserver) {
+    return ZKUtil.joinZNode(this.queuesZNode, regionserver).equals(this.myQueuesZnode);
   }
 
   @Override
-  public SortedMap<String, SortedSet<String>> claimQueues(String regionserverZnode) {
-    SortedMap<String, SortedSet<String>> newQueues = new TreeMap<String, SortedSet<String>>();
+  public Map<String, Set<String>> claimQueues(String regionserverZnode) {
+    Map<String, Set<String>> newQueues = new HashMap<>();
     // check whether there is multi support. If yes, use it.
     if (conf.getBoolean(HConstants.ZOOKEEPER_USEMULTI, true)) {
       LOG.info("Atomically moving " + regionserverZnode + "'s WALs to my queue");
@@ -225,7 +229,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
       this.abortable.abort("Failed to get a list of queues for region server: "
           + this.myQueuesZnode, e);
     }
-    return listOfQueues;
+    return listOfQueues == null ? new ArrayList<String>() : listOfQueues;
   }
 
   /**
@@ -299,8 +303,8 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
    * @param znode pertaining to the region server to copy the queues from
    * @return WAL queues sorted per peer cluster
    */
-  private SortedMap<String, SortedSet<String>> copyQueuesFromRSUsingMulti(String znode) {
-    SortedMap<String, SortedSet<String>> queues = new TreeMap<String, SortedSet<String>>();
+  private Map<String, Set<String>> copyQueuesFromRSUsingMulti(String znode) {
+    Map<String, Set<String>> queues = new HashMap<>();
     // hbase/replication/rs/deadrs
     String deadRSZnodePath = ZKUtil.joinZNode(this.queuesZNode, znode);
     List<String> peerIdsToProcess = null;
@@ -325,7 +329,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
           continue; // empty log queue.
         }
         // create the new cluster znode
-        SortedSet<String> logQueue = new TreeSet<String>();
+        Set<String> logQueue = new HashSet<String>();
         queues.put(newPeerId, logQueue);
         ZKUtilOp op = ZKUtilOp.createAndFailSilent(newPeerZnode, HConstants.EMPTY_BYTE_ARRAY);
         listOfOps.add(op);
@@ -368,10 +372,10 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
    * @param znode server names to copy
    * @return all wals for all peers of that cluster, null if an error occurred
    */
-  private SortedMap<String, SortedSet<String>> copyQueuesFromRS(String znode) {
+  private Map<String, Set<String>> copyQueuesFromRS(String znode) {
     // TODO this method isn't atomic enough, we could start copying and then
     // TODO fail for some reason and we would end up with znodes we don't want.
-    SortedMap<String, SortedSet<String>> queues = new TreeMap<String, SortedSet<String>>();
+    Map<String, Set<String>> queues = new HashMap<>();
     try {
       String nodePath = ZKUtil.joinZNode(this.queuesZNode, znode);
       List<String> clusters = ZKUtil.listChildrenNoWatch(this.zookeeper, nodePath);
@@ -401,7 +405,7 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
         }
         ZKUtil.createNodeIfNotExistsAndWatch(this.zookeeper, newClusterZnode,
           HConstants.EMPTY_BYTE_ARRAY);
-        SortedSet<String> logQueue = new TreeSet<String>();
+        Set<String> logQueue = new HashSet<String>();
         queues.put(newCluster, logQueue);
         for (String wal : wals) {
           String z = ZKUtil.joinZNode(clusterPath, wal);

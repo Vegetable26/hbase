@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.replication.regionserver;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -31,7 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.SortedMap;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -63,13 +64,12 @@ import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
 import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
-import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
-import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
-import org.apache.hadoop.hbase.replication.ReplicationSourceDummy;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
 import org.apache.hadoop.hbase.replication.regionserver.ReplicationSourceManager.NodeFailoverWorker;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
+import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.util.ByteStringer;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
@@ -83,68 +83,63 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 import com.google.common.collect.Sets;
 
-@Category(MediumTests.class)
-public class TestReplicationSourceManager {
+/**
+ * An abstract class that tests ReplicationSourceManager. Classes that extend this class should
+ * set up the proper config for this class and initialize the proper cluster using
+ * HBaseTestingUtility.
+ */
+@Category({ReplicationTests.class, MediumTests.class})
+public abstract class TestReplicationSourceManager {
 
-  private static final Log LOG =
+  protected static final Log LOG =
       LogFactory.getLog(TestReplicationSourceManager.class);
 
-  private static Configuration conf;
+  protected static Configuration conf;
 
-  private static HBaseTestingUtility utility;
+  protected static HBaseTestingUtility utility;
 
-  private static Replication replication;
+  protected static Replication replication;
 
-  private static ReplicationSourceManager manager;
+  protected static ReplicationSourceManager manager;
 
-  private static ZooKeeperWatcher zkw;
+  protected static ZooKeeperWatcher zkw;
 
-  private static HTableDescriptor htd;
+  protected static HTableDescriptor htd;
 
-  private static HRegionInfo hri;
+  protected static HRegionInfo hri;
 
-  private static final byte[] r1 = Bytes.toBytes("r1");
+  protected static final byte[] r1 = Bytes.toBytes("r1");
 
-  private static final byte[] r2 = Bytes.toBytes("r2");
+  protected static final byte[] r2 = Bytes.toBytes("r2");
 
-  private static final byte[] f1 = Bytes.toBytes("f1");
+  protected static final byte[] f1 = Bytes.toBytes("f1");
 
-  private static final byte[] f2 = Bytes.toBytes("f2");
+  protected static final byte[] f2 = Bytes.toBytes("f2");
 
-  private static final TableName test =
+  protected static final TableName test =
       TableName.valueOf("test");
 
-  private static final String slaveId = "1";
+  protected static final String slaveId = "1";
 
-  private static FileSystem fs;
+  protected static FileSystem fs;
 
-  private static Path oldLogDir;
+  protected static Path oldLogDir;
 
-  private static Path logDir;
+  protected static Path logDir;
 
-  private static CountDownLatch latch;
+  protected static CountDownLatch latch;
 
-  private static List<String> files = new ArrayList<String>();
+  protected static List<String> files = new ArrayList<String>();
+  protected static NavigableMap<byte[], Integer> scopes;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-
-    conf = HBaseConfiguration.create();
-    conf.set("replication.replicationsource.implementation",
-        ReplicationSourceDummy.class.getCanonicalName());
-    conf.setBoolean(HConstants.REPLICATION_ENABLE_KEY,
-        HConstants.REPLICATION_ENABLE_DEFAULT);
-    conf.setLong("replication.sleep.before.failover", 2000);
-    conf.setInt("replication.source.maxretriesmultiplier", 10);
-    utility = new HBaseTestingUtility(conf);
-    utility.startMiniZKCluster();
-
+  protected static void setupZkAndReplication() throws Exception {
+    // The implementing class should set up the conf
+    assertNotNull(conf);
     zkw = new ZooKeeperWatcher(conf, "test", null);
     ZKUtil.createWithParents(zkw, "/hbase/replication");
     ZKUtil.createWithParents(zkw, "/hbase/replication/peers/1");
@@ -271,9 +266,11 @@ public class TestReplicationSourceManager {
     LOG.debug("testNodeFailoverWorkerCopyQueuesFromRSUsingMulti");
     conf.setBoolean(HConstants.ZOOKEEPER_USEMULTI, true);
     final Server server = new DummyServer("hostname0.example.org");
+
+
     ReplicationQueues rq =
-        ReplicationFactory.getReplicationQueues(server.getZooKeeper(), server.getConfiguration(),
-          server);
+        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
+          server.getZooKeeper()));
     rq.init(server.getServerName().toString());
     // populate some znodes in the peer znode
     files.add("log1");
@@ -313,8 +310,8 @@ public class TestReplicationSourceManager {
   public void testCleanupFailoverQueues() throws Exception {
     final Server server = new DummyServer("hostname1.example.org");
     ReplicationQueues rq =
-        ReplicationFactory.getReplicationQueues(server.getZooKeeper(), server.getConfiguration(),
-          server);
+        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
+          server.getZooKeeper()));
     rq.init(server.getServerName().toString());
     // populate some znodes in the peer znode
     SortedSet<String> files = new TreeSet<String>();
@@ -328,7 +325,8 @@ public class TestReplicationSourceManager {
     }
     Server s1 = new DummyServer("dummyserver1.example.org");
     ReplicationQueues rq1 =
-        ReplicationFactory.getReplicationQueues(s1.getZooKeeper(), s1.getConfiguration(), s1);
+        ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(s1.getConfiguration(), s1,
+            s1.getZooKeeper()));
     rq1.init(s1.getServerName().toString());
     ReplicationPeers rp1 =
         ReplicationFactory.getReplicationPeers(s1.getZooKeeper(), s1.getConfiguration(), s1);
@@ -336,93 +334,13 @@ public class TestReplicationSourceManager {
     NodeFailoverWorker w1 =
         manager.new NodeFailoverWorker(server.getServerName().getServerName(), rq1, rp1, new UUID(
             new Long(1), new Long(2)));
-    w1.start();
-    w1.join(5000);
+    w1.run();
     assertEquals(1, manager.getWalsByIdRecoveredQueues().size());
     String id = "1-" + server.getServerName().getServerName();
     assertEquals(files, manager.getWalsByIdRecoveredQueues().get(id).get(group));
     manager.cleanOldLogs(file2, id, true);
     // log1 should be deleted
     assertEquals(Sets.newHashSet(file2), manager.getWalsByIdRecoveredQueues().get(id).get(group));
-  }
-
-  @Test
-  public void testNodeFailoverDeadServerParsing() throws Exception {
-    LOG.debug("testNodeFailoverDeadServerParsing");
-    conf.setBoolean(HConstants.ZOOKEEPER_USEMULTI, true);
-    final Server server = new DummyServer("ec2-54-234-230-108.compute-1.amazonaws.com");
-    ReplicationQueues repQueues =
-        ReplicationFactory.getReplicationQueues(server.getZooKeeper(), conf, server);
-    repQueues.init(server.getServerName().toString());
-    // populate some znodes in the peer znode
-    files.add("log1");
-    files.add("log2");
-    for (String file : files) {
-      repQueues.addLog("1", file);
-    }
-
-    // create 3 DummyServers
-    Server s1 = new DummyServer("ip-10-8-101-114.ec2.internal");
-    Server s2 = new DummyServer("ec2-107-20-52-47.compute-1.amazonaws.com");
-    Server s3 = new DummyServer("ec2-23-20-187-167.compute-1.amazonaws.com");
-
-    // simulate three servers fail sequentially
-    ReplicationQueues rq1 =
-        ReplicationFactory.getReplicationQueues(s1.getZooKeeper(), s1.getConfiguration(), s1);
-    rq1.init(s1.getServerName().toString());
-    SortedMap<String, SortedSet<String>> testMap =
-        rq1.claimQueues(server.getServerName().getServerName());
-    ReplicationQueues rq2 =
-        ReplicationFactory.getReplicationQueues(s2.getZooKeeper(), s2.getConfiguration(), s2);
-    rq2.init(s2.getServerName().toString());
-    testMap = rq2.claimQueues(s1.getServerName().getServerName());
-    ReplicationQueues rq3 =
-        ReplicationFactory.getReplicationQueues(s3.getZooKeeper(), s3.getConfiguration(), s3);
-    rq3.init(s3.getServerName().toString());
-    testMap = rq3.claimQueues(s2.getServerName().getServerName());
-
-    ReplicationQueueInfo replicationQueueInfo = new ReplicationQueueInfo(testMap.firstKey());
-    List<String> result = replicationQueueInfo.getDeadRegionServers();
-
-    // verify
-    assertTrue(result.contains(server.getServerName().getServerName()));
-    assertTrue(result.contains(s1.getServerName().getServerName()));
-    assertTrue(result.contains(s2.getServerName().getServerName()));
-
-    server.abort("", null);
-  }
-
-  @Test
-  public void testFailoverDeadServerCversionChange() throws Exception {
-    LOG.debug("testFailoverDeadServerCversionChange");
-
-    conf.setBoolean(HConstants.ZOOKEEPER_USEMULTI, true);
-    final Server s0 = new DummyServer("cversion-change0.example.org");
-    ReplicationQueues repQueues =
-        ReplicationFactory.getReplicationQueues(s0.getZooKeeper(), conf, s0);
-    repQueues.init(s0.getServerName().toString());
-    // populate some znodes in the peer znode
-    files.add("log1");
-    files.add("log2");
-    for (String file : files) {
-      repQueues.addLog("1", file);
-    }
-    // simulate queue transfer
-    Server s1 = new DummyServer("cversion-change1.example.org");
-    ReplicationQueues rq1 =
-        ReplicationFactory.getReplicationQueues(s1.getZooKeeper(), s1.getConfiguration(), s1);
-    rq1.init(s1.getServerName().toString());
-
-    ReplicationQueuesClient client =
-        ReplicationFactory.getReplicationQueuesClient(s1.getZooKeeper(), s1.getConfiguration(), s1);
-
-    int v0 = client.getQueuesZNodeCversion();
-    rq1.claimQueues(s0.getServerName().getServerName());
-    int v1 = client.getQueuesZNodeCversion();
-    // cversion should increased by 1 since a child node is deleted
-    assertEquals(v0 + 1, v1);
-
-    s0.abort("", null);
   }
 
   @Test
@@ -499,7 +417,7 @@ public class TestReplicationSourceManager {
   }
 
   static class DummyNodeFailoverWorker extends Thread {
-    private SortedMap<String, SortedSet<String>> logZnodesMap;
+    private Map<String, Set<String>> logZnodesMap;
     Server server;
     private String deadRsZnode;
     ReplicationQueues rq;
@@ -508,8 +426,8 @@ public class TestReplicationSourceManager {
       this.deadRsZnode = znode;
       this.server = s;
       this.rq =
-          ReplicationFactory.getReplicationQueues(server.getZooKeeper(), server.getConfiguration(),
-            server);
+          ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
+            server.getZooKeeper()));
       this.rq.init(this.server.getServerName().toString());
     }
 
@@ -529,12 +447,12 @@ public class TestReplicationSourceManager {
      * @return 1 when the map is not empty.
      */
     private int isLogZnodesMapPopulated() {
-      Collection<SortedSet<String>> sets = logZnodesMap.values();
+      Collection<Set<String>> sets = logZnodesMap.values();
       if (sets.size() > 1) {
         throw new RuntimeException("unexpected size of logZnodesMap: " + sets.size());
       }
       if (sets.size() == 1) {
-        SortedSet<String> s = sets.iterator().next();
+        Set<String> s = sets.iterator().next();
         for (String file : files) {
           // at least one file was missing
           if (!s.contains(file)) {

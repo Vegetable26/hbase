@@ -277,8 +277,10 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
 
     public static final String USAGE =  "Usage : " + Generator.class.getSimpleName() +
         " <num mappers> <num nodes per map> <tmp output dir> [<width> <wrap multiplier>" +
-        " <num walkers> <log every # nodes>] \n " +
-        "where <num nodes per map> should be a multiple of width*wrap multiplier, 25M by default";
+        " <num priority walker threads> " + "<num random walker threads>] \n" +
+        "where <num nodes per map> should be a multiple of width*wrap multiplier, 25M by default \n" +
+        "Priority walkers will walk the most recently flushed loop. \n" +
+        "Random walkers will walk any flushed loop.";
 
     public Job job;
 
@@ -1482,6 +1484,7 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
     private static final String USAGE = "Usage: Loop <num iterations> <num mappers> " +
         "<num nodes per mapper> <output dir> <num reducers> [<width> <wrap multiplier>" +
         " <num priority walker threads> " + "<num random walker threads>] \n" +
+        "where <num nodes per map> should be a multiple of width*wrap multiplier, 25M by default \n" +
         "Priority walkers will walk the most recently flushed loop. \n" +
         "Random walkers will walk any flushed loop.";
 

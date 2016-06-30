@@ -195,6 +195,10 @@ public class TestReplicationStateHBaseImpl {
       assertNull(rq1.getLogsInQueue("Queue1"));
       // Test that getting logs from a non-existent queue aborts
       assertEquals(6, ds1.getAbortCount());
+      // Test removing a non-existent queue does not cause an abort. This is because we can
+      // attempt to remove a queue that has
+      rq1.removeQueue("NotHereQueue");
+      assertEquals(6, ds1.getAbortCount());
     } catch (ReplicationException e) {
       e.printStackTrace();
       fail("testAddLog received a ReplicationException");

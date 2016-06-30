@@ -93,11 +93,13 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
 
   @Override
   public void removeQueue(String queueId) {
-
     try {
       byte[] rowKey = queueIdToRowKey(queueId);
       Delete deleteQueue = new Delete(rowKey);
-      safeQueueUpdate(deleteQueue);
+      Get checkQueueExists = new Get(rowKey);
+      if (getOrBlockOnReplicationTable().exists(checkQueueExists)) {
+        safeQueueUpdate(deleteQueue);
+      }
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed removing queue queueId=" + queueId;
       abortable.abort(errMsg, e);

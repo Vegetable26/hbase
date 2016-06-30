@@ -251,6 +251,18 @@ public class ReplicationPeerZKImpl extends ReplicationStateZKBase
     }
 
     @Override
+    public synchronized void nodeCreated(String path) {
+      if (path.equals(node)) {
+        super.nodeCreated(path);
+        try {
+          readPeerStateZnode();
+        } catch (DeserializationException e) {
+          LOG.warn("Failed deserializing the content of " + path, e);
+        }
+      }
+    }
+
+    @Override
     public synchronized void nodeDataChanged(String path) {
       if (path.equals(node)) {
         super.nodeDataChanged(path);
@@ -259,6 +271,13 @@ public class ReplicationPeerZKImpl extends ReplicationStateZKBase
         } catch (DeserializationException e) {
           LOG.warn("Failed deserializing the content of " + path, e);
         }
+      }
+    }
+
+    @Override
+    public synchronized void nodeDeleted(String path) {
+      if (path.equals(node)) {
+        peerState = PeerState.DISABLED;
       }
     }
   }

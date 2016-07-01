@@ -279,8 +279,8 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
         " <num mappers> <num nodes per map> <tmp output dir> [<width> <wrap multiplier>" +
         " <num priority walker threads> " + "<num random walker threads>] \n" +
         "where <num nodes per map> should be a multiple of width*wrap multiplier, 25M by default \n" +
-        "Priority walkers will walk the most recently flushed loop. \n" +
-        "Random walkers will walk any flushed loop.";
+        "priority walkers will walk the most recently flushed loop. \n" +
+        "random walkers will randomly select any flushed loop.";
 
     public Job job;
 
@@ -1485,8 +1485,8 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
         "<num nodes per mapper> <output dir> <num reducers> [<width> <wrap multiplier>" +
         " <num priority walker threads> " + "<num random walker threads>] \n" +
         "where <num nodes per map> should be a multiple of width*wrap multiplier, 25M by default \n" +
-        "Priority walkers will walk the most recently flushed loop. \n" +
-        "Random walkers will walk any flushed loop.";
+        "priority walkers will walk the most recently flushed loop. \n" +
+        "random walkers will randomly select any flushed loop.";
 
     IntegrationTestBigLinkedList it;
 

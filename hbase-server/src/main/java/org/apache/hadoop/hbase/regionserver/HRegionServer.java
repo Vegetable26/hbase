@@ -1663,7 +1663,10 @@ public class HRegionServer extends HasThread implements
 
     // Instantiate replication manager if replication enabled.  Pass it the
     // log directories.
-    createNewReplicationInstance(conf, this, this.fs, logdir, oldLogDir);
+    if (!(this instanceof HMaster)) {
+      // TODO: Only disable when in conjunction with Table Based Replication
+      createNewReplicationInstance(conf, this, this.fs, logdir, oldLogDir);
+    }
 
     // listeners the wal factory will add to wals it creates.
     final List<WALActionsListener> listeners = new ArrayList<WALActionsListener>();
@@ -1886,6 +1889,7 @@ public class HRegionServer extends HasThread implements
         regionInfo.getReplicaId() == HRegionInfo.DEFAULT_REPLICA_ID) {
       roller = ensureMetaWALRoller();
       wal = walFactory.getMetaWAL(regionInfo.getEncodedNameAsBytes());
+    } else if (regionInfo != null && regionInfo.isSystemTable()){
     } else if (regionInfo == null) {
       wal = walFactory.getWAL(UNSPECIFIED_REGION, null);
     } else {

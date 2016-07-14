@@ -1766,4 +1766,12 @@ public class HTableDescriptor implements WritableComparable<HTableDescriptor> {
     return metaDescriptor;
   }
 
+  public boolean hasReplicatedFamily() {
+    for (HColumnDescriptor family : families.values()) {
+      if (family.getScope() == HConstants.REPLICATION_SCOPE_GLOBAL) {
+        return true;
+      }
+    }
+    return false;
+  }
 }

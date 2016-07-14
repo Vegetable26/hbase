@@ -28,6 +28,9 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.coordination.OpenRegionCoordination;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
@@ -35,6 +38,8 @@ import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionServerAccounting;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices.PostOpenDeployContext;
+import org.apache.hadoop.hbase.replication.ReplicationFactory;
+import org.apache.hadoop.hbase.replication.TableBasedReplicationQueuesImpl;
 import org.apache.hadoop.hbase.util.CancelableProgressable;
 import org.apache.hadoop.hbase.util.ConfigUtil;
 /**
@@ -359,6 +364,9 @@ public class OpenRegionHandler extends EventHandler {
     try {
       // Instantiate the region.  This also periodically tickles OPENING
       // state so master doesn't timeout this region in transition.
+
+      checkReplication();
+
       region = HRegion.openHRegion(this.regionInfo, this.htd,
         this.rsServices.getWAL(this.regionInfo),
         this.server.getConfiguration(),
@@ -419,5 +427,29 @@ public class OpenRegionHandler extends EventHandler {
 
   private boolean isRegionStillOpening() {
     return isRegionStillOpening(regionInfo, rsServices);
+  }
+
+  private void checkReplication() throws IOException {
+    if (htd.hasReplicatedFamily()) {
+      if (tableBasedReplicationEnabled()) {
+        if (!checkReplicationTableAvailable()) {
+          throw new IOException("Replication Table is not available yet. Cannot open up replicated " +
+              "region " + regionInfo.getRegionNameAsString());
+        }
+      }
+    }
+  }
+
+  private boolean tableBasedReplicationEnabled() {
+    // TODO: Have a better way to check
+    Class<?> replicationClass = rsServices.getConfiguration().getClass(
+        "hbase.region.replica.replication.replicationQueues.class",
+        ReplicationFactory.defaultReplicationQueueClass);
+    return replicationClass.equals(TableBasedReplicationQueuesImpl.class);
+  }
+  private boolean checkReplicationTableAvailable() throws IOException {
+    Connection connection = ConnectionFactory.createConnection(rsServices.getConfiguration());
+    Admin admin = connection.getAdmin();
+    return admin.isTableAvailable(TableBasedReplicationQueuesImpl.REPLICATION_TABLE_NAME);
   }
 }

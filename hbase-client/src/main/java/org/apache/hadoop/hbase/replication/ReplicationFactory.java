@@ -31,10 +31,14 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 @InterfaceAudience.Private
 public class ReplicationFactory {
 
+  public static final Class defaultReplicationQueueClass = ReplicationQueuesZKImpl.class;
+  public static final Class defaultReplicationQueuesClientClass = ReplicationQueuesClientZKImpl.class;
+
   public static ReplicationQueues getReplicationQueues(ReplicationQueuesArguments args)
       throws Exception {
+
     Class<?> classToBuild = args.getConf().getClass("hbase.region.replica." +
-        "replication.replicationQueues.class", ReplicationQueuesZKImpl.class);
+        "replication.replicationQueues.class", defaultReplicationQueueClass);
     return (ReplicationQueues) ConstructorUtils.invokeConstructor(classToBuild, args);
   }
 
@@ -42,7 +46,7 @@ public class ReplicationFactory {
       ReplicationQueuesClientArguments args)
     throws Exception {
     Class<?> classToBuild = args.getConf().getClass("hbase.region.replica." +
-      "replication.replicationQueuesClient.class", ReplicationQueuesClientZKImpl.class);
+      "replication.replicationQueuesClient.class", defaultReplicationQueuesClientClass);
     return (ReplicationQueuesClient) ConstructorUtils.invokeConstructor(classToBuild, args);
   }
 

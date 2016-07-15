@@ -426,7 +426,6 @@ abstract class ReplicationTableBase {
     @Override
     public void run() {
       try {
-
         initConf = buildTableInitConf();
         initConnection = ConnectionFactory.createConnection(initConf);
         initAdmin = initConnection.getAdmin();
@@ -435,7 +434,7 @@ abstract class ReplicationTableBase {
             DEFAULT_CLIENT_RETRIES);
         RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, DEFAULT_RPC_TIMEOUT);
         RetryCounter retryCounter = counterFactory.create();
-        while (!replicationTableExists()) {
+        while (!replicationTableAvailable()) {
           retryCounter.sleepUntilNextRetry();
           if (!retryCounter.shouldRetry()) {
             throw new IOException("Unable to acquire the Replication Table");
@@ -490,9 +489,9 @@ abstract class ReplicationTableBase {
      * @return whether the Replication Table exists
      * @throws IOException
      */
-    private boolean replicationTableExists() {
+    private boolean replicationTableAvailable() {
       try {
-        return initAdmin.tableExists(REPLICATION_TABLE_NAME);
+        return initAdmin.isTableAvailable(REPLICATION_TABLE_NAME);
       } catch (IOException e) {
         return false;
       }

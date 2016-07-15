@@ -364,9 +364,7 @@ public class OpenRegionHandler extends EventHandler {
     try {
       // Instantiate the region.  This also periodically tickles OPENING
       // state so master doesn't timeout this region in transition.
-
       checkReplication();
-
       region = HRegion.openHRegion(this.regionInfo, this.htd,
         this.rsServices.getWAL(this.regionInfo),
         this.server.getConfiguration(),

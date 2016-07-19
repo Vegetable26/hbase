@@ -87,13 +87,12 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   }
 
   @Override
-  public List<String> getListOfReplicators() {
+  public List<String> getListOfReplicators() throws ReplicationException {
     return super.getListOfReplicators();
   }
 
   @Override
   public void removeQueue(String queueId) {
-
     try {
       byte[] rowKey = queueIdToRowKey(queueId);
       Delete deleteQueue = new Delete(rowKey);
@@ -104,10 +103,14 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
     }
   }
 
+  // addLog() will throw a ReplicationException immediately if the Replication Table is not up. It
+  // will not wait and block on Replication to come up like the other methods
   @Override
   public void addLog(String queueId, String filename) throws ReplicationException {
-    try (Table replicationTable = getOrBlockOnReplicationTable()) {
-      if (!checkQueueExists(queueId)) {
+    try (Table replicationTable = getOrFastFailReplication()) {
+      // The following line will throw an exception if it fails to read Replication Table with the
+      // fastFail config options
+      if (!checkQueueExistsFailFast(queueId)) {
         // Each queue will have an Owner, OwnerHistory, and a collection of [WAL:offset] key values
         Put putNewQueue = new Put(Bytes.toBytes(buildQueueRowKey(queueId)));
         putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER, serverNameBytes);
@@ -122,7 +125,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
       }
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
-      abortable.abort(errMsg, e);
+      throw new ReplicationException(errMsg, e);
     }
   }
 
@@ -177,7 +180,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
       return Bytes.toLong(result.getValue(CF_QUEUE, Bytes.toBytes(filename)));
     } catch (IOException e) {
       throw new ReplicationException("Could not get position in log for queueId=" + queueId +
-        ", filename=" + filename);
+        ", filename=" + filename, e);
     }
   }
 
@@ -348,14 +351,15 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   }
 
   /**
-   * Check if the queue specified by queueId is stored in HBase
+   * Check if the queue specified by queueId is stored in HBase. This method will throw an exception
+   * if it fails to read the Replication Table after the options set in fastFailConfig
    *
    * @param queueId Either raw or reclaimed format of the queueId
    * @return Whether the queue is stored in HBase
    * @throws IOException
    */
-  private boolean checkQueueExists(String queueId) throws IOException {
-    try (Table replicationTable = getOrBlockOnReplicationTable()) {
+  private boolean checkQueueExistsFailFast(String queueId) throws IOException {
+    try (Table replicationTable = getOrFastFailReplication()) {
       byte[] rowKey = queueIdToRowKey(queueId);
       return replicationTable.exists(new Get(rowKey));
     }

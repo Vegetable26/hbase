@@ -572,6 +572,10 @@ public class FSHLog implements WAL {
     return maxLogs;
   }
 
+  public String getWalFilePrefix() {
+    return logFilePrefix;
+  }
+
   /**
    * Get the backing files associated with this WAL.
    * @return may be null if there are no files.
@@ -698,10 +702,12 @@ public class FSHLog implements WAL {
           // If this fails, we just keep going.... it is an optimization, not the end of the world.
           preemptiveSync((ProtobufLogWriter)nextWriter);
         }
-        tellListenersAboutPreLogRoll(oldPath, newPath);
-        // NewPath could be equal to oldPath if replaceWriter fails.
-        newPath = replaceWriter(oldPath, newPath, nextWriter, nextHdfsOut);
-        tellListenersAboutPostLogRoll(oldPath, newPath);
+        synchronized (this) {
+          tellListenersAboutPreLogRoll(oldPath, newPath);
+          // NewPath could be equal to oldPath if replaceWriter fails.
+          newPath = replaceWriter(oldPath, newPath, nextWriter, nextHdfsOut);
+          tellListenersAboutPostLogRoll(oldPath, newPath);
+        }
         // Can we delete any of the old log files?
         if (getNumRolledLogFiles() > 0) {
           cleanOldLogs();

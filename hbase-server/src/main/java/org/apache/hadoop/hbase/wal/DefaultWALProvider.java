@@ -193,6 +193,10 @@ public class DefaultWALProvider implements WALProvider {
     return ((FSHLog)wal).getCurrentFileName();
   }
 
+  public static String getWalFilePrefix(final WAL wal) {
+    return ((FSHLog) wal).getWalFilePrefix();
+  }
+
   /**
    * request a log roll, but don't actually do it.
    */

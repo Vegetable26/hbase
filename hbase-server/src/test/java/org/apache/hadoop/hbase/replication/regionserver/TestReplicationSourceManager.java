@@ -218,7 +218,8 @@ public abstract class TestReplicationSourceManager {
         URLEncoder.encode("regionserver:60020", "UTF8"));
     final WAL wal = wals.getWAL(hri.getEncodedNameAsBytes(), hri.getTable().getNamespace());
     manager.init();
-    HTableDescriptor htd = new HTableDescriptor();
+    manager.registerWal(wal);
+    HTableDescriptor htd = new HTableDescriptor(TableName.valueOf("tableame"));
     htd.addFamily(new HColumnDescriptor(f1));
     // Testing normal log rolling every 20
     for(long i = 1; i < 101; i++) {
@@ -353,6 +354,7 @@ public abstract class TestReplicationSourceManager {
     assertEquals(Sets.newHashSet(file2), manager.getWalsByIdRecoveredQueues().get(id).get(group));
   }
 
+  @Test
   public void testBulkLoadWALEditsWithoutBulkLoadReplicationEnabled() throws Exception {
     // 1. Create wal key
     WALKey logKey = new WALKey();

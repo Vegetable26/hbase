@@ -1882,9 +1882,16 @@ public class HRegionServer extends HasThread implements
     } else {
       byte[] namespace = regionInfo.getTable().getNamespace();
       wal = walFactory.getWAL(regionInfo.getEncodedNameAsBytes(), namespace);
+      if (getReplicationSourceService() != null && checkReplication(regionInfo)) {
+        getReplicationSourceService().registerWal(wal);
+      }
     }
     roller.addWAL(wal);
     return wal;
+  }
+
+  public boolean checkReplication(HRegionInfo regionInfo) throws IOException{
+    return tableDescriptors.get(regionInfo.getTable()).checkAnyReplicatedFamilies();
   }
 
   @Override

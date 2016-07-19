@@ -43,7 +43,7 @@ public interface ReplicationQueuesClient {
    * @return a list of server names
    * @throws KeeperException zookeeper exception
    */
-  List<String> getListOfReplicators() throws KeeperException;
+  List<String> getListOfReplicators() throws KeeperException, ReplicationException;
 
   /**
    * Get a list of all WALs in the given queue on the given region server.

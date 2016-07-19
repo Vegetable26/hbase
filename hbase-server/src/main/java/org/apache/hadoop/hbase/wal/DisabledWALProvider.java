@@ -154,6 +154,14 @@ class DisabledWALProvider implements WALProvider {
     }
 
     @Override
+    public void lockRollWriter() {
+    }
+
+    @Override
+    public void unlockRollWriter() {
+    }
+
+    @Override
     public long append(HTableDescriptor htd, HRegionInfo info, WALKey key, WALEdit edits,
         boolean inMemstore) throws IOException {
       if (!this.listeners.isEmpty()) {

@@ -422,6 +422,14 @@ public abstract class AbstractFSWAL<W> implements WAL {
     return rollWriter(false);
   }
 
+  public void lockRollWriter() {
+    rollWriterLock.lock();
+  }
+
+  public void unlockRollWriter() {
+    rollWriterLock.unlock();
+  }
+
   /**
    * This is a convenience method that computes a new filename with a given file-number.
    * @param filenum to use
@@ -891,6 +899,10 @@ public abstract class AbstractFSWAL<W> implements WAL {
         listener.postSync(timeInNanos, handlerSyncs);
       }
     }
+  }
+
+  public String getWalPrefix() {
+    return walFilePrefix;
   }
 
   @Override

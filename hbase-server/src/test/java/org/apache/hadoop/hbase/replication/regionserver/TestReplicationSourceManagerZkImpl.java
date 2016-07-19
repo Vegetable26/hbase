@@ -144,4 +144,30 @@ public class TestReplicationSourceManagerZkImpl extends TestReplicationSourceMan
 
     s0.stop("");
   }
+
+  @Test
+  public void testCleanupUnknownPeerZNode() throws Exception {
+    final Server server = new DummyServer("hostname2.example.org");
+    ReplicationQueues rq = ReplicationFactory.getReplicationQueues(
+        new ReplicationQueuesArguments(server.getConfiguration(), server, server.getZooKeeper()));
+    rq.init(server.getServerName().toString());
+    // populate some znodes in the peer znode
+    // add log to an unknown peer
+    String group = "testgroup";
+    rq.addLog("2", group + ".log1");
+    rq.addLog("2", group + ".log2");
+
+    ReplicationSourceManager.NodeFailoverWorker w1 = manager.new NodeFailoverWorker(server.getServerName().getServerName());
+    w1.run();
+
+    // The log of the unknown peer should be removed from zk
+    for (String peer : manager.getAllQueues()) {
+      assertTrue(peer.startsWith("1"));
+    }
+  }
+
+  @Override
+  void waitUntilReplicationEnabled(ReplicationQueues rq) throws InterruptedException {
+    // no-op
+  }
 }

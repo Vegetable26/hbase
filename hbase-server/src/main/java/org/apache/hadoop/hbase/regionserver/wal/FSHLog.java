@@ -282,8 +282,7 @@ public class FSHLog extends AbstractFSWAL<Writer> {
       LOG.warn("pre-sync failed but an optimization so keep going", e);
     }
   }
-
-  /**
+  /*
    * This method allows subclasses to inject different writers without having to extend other
    * methods like rollWriter().
    * @return Writer instance

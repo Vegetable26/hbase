@@ -56,7 +56,7 @@ public class TableBasedReplicationQueuesClientImpl extends ReplicationTableBase
   }
 
   @Override
-  public List<String> getListOfReplicators() {
+  public List<String> getListOfReplicators() throws ReplicationException {
     return super.getListOfReplicators();
   }
 

@@ -224,6 +224,7 @@ public abstract class TestReplicationSourceManager {
         URLEncoder.encode("regionserver:60020", "UTF8"));
     final WAL wal = wals.getWAL(hri.getEncodedNameAsBytes(), hri.getTable().getNamespace());
     manager.init();
+    manager.registerWal(wal);
     HTableDescriptor htd = new HTableDescriptor(TableName.valueOf("tableame"));
     htd.addFamily(new HColumnDescriptor(f1));
     NavigableMap<byte[], Integer> scopes = new TreeMap<byte[], Integer>(
@@ -293,6 +294,7 @@ public abstract class TestReplicationSourceManager {
         ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
           server.getZooKeeper()));
     rq.init(server.getServerName().toString());
+    waitUntilReplicationEnabled(rq);
     // populate some znodes in the peer znode
     files.add("log1");
     files.add("log2");
@@ -334,6 +336,7 @@ public abstract class TestReplicationSourceManager {
         ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
           server.getZooKeeper()));
     rq.init(server.getServerName().toString());
+    waitUntilReplicationEnabled(rq);
     // populate some znodes in the peer znode
     SortedSet<String> files = new TreeSet<String>();
     String group = "testgroup";
@@ -349,6 +352,7 @@ public abstract class TestReplicationSourceManager {
         ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(s1.getConfiguration(), s1,
             s1.getZooKeeper()));
     rq1.init(s1.getServerName().toString());
+    waitUntilReplicationEnabled(rq);
     ReplicationPeers rp1 =
         ReplicationFactory.getReplicationPeers(s1.getZooKeeper(), s1.getConfiguration(), s1);
     rp1.init();
@@ -362,27 +366,6 @@ public abstract class TestReplicationSourceManager {
     manager.cleanOldLogs(file2, id, true);
     // log1 should be deleted
     assertEquals(Sets.newHashSet(file2), manager.getWalsByIdRecoveredQueues().get(id).get(group));
-  }
-
-  @Test
-  public void testCleanupUnknownPeerZNode() throws Exception {
-    final Server server = new DummyServer("hostname2.example.org");
-    ReplicationQueues rq = ReplicationFactory.getReplicationQueues(
-      new ReplicationQueuesArguments(server.getConfiguration(), server, server.getZooKeeper()));
-    rq.init(server.getServerName().toString());
-    // populate some znodes in the peer znode
-    // add log to an unknown peer
-    String group = "testgroup";
-    rq.addLog("2", group + ".log1");
-    rq.addLog("2", group + ".log2");
-
-    NodeFailoverWorker w1 = manager.new NodeFailoverWorker(server.getServerName().getServerName());
-    w1.run();
-
-    // The log of the unknown peer should be removed from zk
-    for (String peer : manager.getAllQueues()) {
-      assertTrue(peer.startsWith("1"));
-    }
   }
 
   @Test
@@ -459,7 +442,9 @@ public abstract class TestReplicationSourceManager {
     return logEdit;
   }
 
-  static class DummyNodeFailoverWorker extends Thread {
+  abstract void waitUntilReplicationEnabled(ReplicationQueues rq) throws InterruptedException;
+
+  class DummyNodeFailoverWorker extends Thread {
     private Map<String, Set<String>> logZnodesMap;
     Server server;
     private String deadRsZnode;
@@ -472,6 +457,7 @@ public abstract class TestReplicationSourceManager {
           ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
             server.getZooKeeper()));
       this.rq.init(this.server.getServerName().toString());
+      waitUntilReplicationEnabled(rq);
     }
 
     @Override

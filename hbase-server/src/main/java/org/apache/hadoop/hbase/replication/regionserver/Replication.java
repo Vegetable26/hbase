@@ -57,6 +57,7 @@ import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
 import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
 import org.apache.hadoop.hbase.replication.master.ReplicationHFileCleaner;
 import org.apache.hadoop.hbase.replication.master.ReplicationLogCleaner;
+import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.zookeeper.KeeperException;
@@ -167,6 +168,7 @@ public class Replication extends WALActionsListener.Base implements
   public WALActionsListener getWALActionsListener() {
     return this;
   }
+
   /**
    * Stops replication service.
    */
@@ -304,6 +306,11 @@ public class Replication extends WALActionsListener.Base implements
   @Override
   public void postLogRoll(Path oldPath, Path newPath) throws IOException {
     getReplicationManager().postLogRoll(newPath);
+  }
+
+  @Override
+  public void registerWal(WAL wal) throws IOException {
+    replicationManager.registerWal(wal);
   }
 
   /**

@@ -450,6 +450,8 @@ public class ReplicationSourceManager implements ReplicationListener {
     }
   }
 
+
+
   /**
    * Factory method to create a replication source
    * @param conf the configuration to use
@@ -816,5 +818,9 @@ public class ReplicationSourceManager implements ReplicationListener {
 
   public void cleanUpHFileRefs(String peerId, List<String> files) {
     this.replicationQueues.removeHFileRefs(peerId, files);
+  }
+
+  public ReplicationPeers getReplicationPeers() {
+    return replicationPeers;
   }
 }

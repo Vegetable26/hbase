@@ -74,6 +74,7 @@ import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.util.ByteStringer;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
+import org.apache.hadoop.hbase.wal.AbstractFSWALProvider;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALFactory;
 import org.apache.hadoop.hbase.wal.WALKey;
@@ -224,6 +225,7 @@ public abstract class TestReplicationSourceManager {
         URLEncoder.encode("regionserver:60020", "UTF8"));
     final WAL wal = wals.getWAL(hri.getEncodedNameAsBytes(), hri.getTable().getNamespace());
     manager.init();
+    manager.registerWal(wal);
     HTableDescriptor htd = new HTableDescriptor(TableName.valueOf("tableame"));
     htd.addFamily(new HColumnDescriptor(f1));
     NavigableMap<byte[], Integer> scopes = new TreeMap<byte[], Integer>(
@@ -362,27 +364,6 @@ public abstract class TestReplicationSourceManager {
     manager.cleanOldLogs(file2, id, true);
     // log1 should be deleted
     assertEquals(Sets.newHashSet(file2), manager.getWalsByIdRecoveredQueues().get(id).get(group));
-  }
-
-  @Test
-  public void testCleanupUnknownPeerZNode() throws Exception {
-    final Server server = new DummyServer("hostname2.example.org");
-    ReplicationQueues rq = ReplicationFactory.getReplicationQueues(
-      new ReplicationQueuesArguments(server.getConfiguration(), server, server.getZooKeeper()));
-    rq.init(server.getServerName().toString());
-    // populate some znodes in the peer znode
-    // add log to an unknown peer
-    String group = "testgroup";
-    rq.addLog("2", group + ".log1");
-    rq.addLog("2", group + ".log2");
-
-    NodeFailoverWorker w1 = manager.new NodeFailoverWorker(server.getServerName().getServerName());
-    w1.run();
-
-    // The log of the unknown peer should be removed from zk
-    for (String peer : manager.getAllQueues()) {
-      assertTrue(peer.startsWith("1"));
-    }
   }
 
   @Test

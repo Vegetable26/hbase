@@ -156,6 +156,7 @@ import org.apache.hadoop.hbase.regionserver.handler.CloseRegionHandler;
 import org.apache.hadoop.hbase.regionserver.handler.RegionReplicaFlushHandler;
 import org.apache.hadoop.hbase.regionserver.throttle.FlushThroughputControllerFactory;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
+import org.apache.hadoop.hbase.regionserver.wal.AbstractFSWAL;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
 import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
 import org.apache.hadoop.hbase.replication.regionserver.ReplicationLoad;
@@ -1894,9 +1895,20 @@ public class HRegionServer extends HasThread implements
     } else {
       byte[] namespace = regionInfo.getTable().getNamespace();
       wal = walFactory.getWAL(regionInfo.getEncodedNameAsBytes(), namespace);
+      synchronized (walFactory) {
+        if (getReplicationSourceService() != null && checkReplication(regionInfo)) {
+          // TODO: Do we have to worry about the WAL file being updated in the mean time?
+          // TODO: We do lock on openRegion.
+          getReplicationSourceService().registerWal(wal);
+        }
+      }
     }
     roller.addWAL(wal);
     return wal;
+  }
+
+  public boolean checkReplication(HRegionInfo regionInfo) throws IOException{
+    return tableDescriptors.get(regionInfo.getTable()).checkAnyReplicatedFamilies();
   }
 
   @Override

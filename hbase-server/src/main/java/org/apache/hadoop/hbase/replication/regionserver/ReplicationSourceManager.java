@@ -42,6 +42,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.collections.set.SynchronizedSet;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -54,6 +55,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.RegionServerCoprocessorHost;
+import org.apache.hadoop.hbase.regionserver.wal.AbstractFSWAL;
 import org.apache.hadoop.hbase.replication.ReplicationEndpoint;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationListener;
@@ -64,6 +66,7 @@ import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationTracker;
 import org.apache.hadoop.hbase.wal.AbstractFSWALProvider;
+import org.apache.hadoop.hbase.wal.WAL;
 
 /**
  * This class is responsible to manage all the replication
@@ -117,6 +120,7 @@ public class ReplicationSourceManager implements ReplicationListener {
   private final Random rand;
   private final boolean replicationForBulkLoadDataEnabled;
 
+  private Set<String> registeredWALs;
 
   /**
    * Creates a replication manager and sets the watch on all the other registered region servers
@@ -170,6 +174,7 @@ public class ReplicationSourceManager implements ReplicationListener {
     replicationForBulkLoadDataEnabled =
         conf.getBoolean(HConstants.REPLICATION_BULKLOAD_ENABLE_KEY,
           HConstants.REPLICATION_BULKLOAD_ENABLE_DEFAULT);
+    this.registeredWALs = Collections.synchronizedSet(new HashSet<String>());
   }
 
   /**
@@ -351,9 +356,19 @@ public class ReplicationSourceManager implements ReplicationListener {
   }
 
   void preLogRoll(Path newLog) throws IOException {
-    recordLog(newLog);
     String logName = newLog.getName();
     String logPrefix = AbstractFSWALProvider.getWALPrefixFromWALName(logName);
+    // TODO: I don't know if it is safe to use WAL prefix as unique identifiers.
+    // TODO: Perhaps directly pass in the WAL
+    if (registeredWALs.contains(logPrefix)) {
+      recordLogAndLatestPath(newLog);
+    }
+  }
+
+  private void recordLogAndLatestPath(Path newLog) throws IOException {
+    String logName = newLog.getName();
+    String logPrefix = AbstractFSWALProvider.getWALPrefixFromWALName(logName);
+    recordLog(newLog);
     synchronized (latestPaths) {
       Iterator<Path> iterator = latestPaths.iterator();
       while (iterator.hasNext()) {
@@ -421,6 +436,17 @@ public class ReplicationSourceManager implements ReplicationListener {
     // This only updates the sources we own, not the recovered ones
     for (ReplicationSourceInterface source : this.sources) {
       source.enqueueLog(newLog);
+    }
+  }
+
+  void registerWal(WAL wal) throws IOException {
+    if (registeredWALs.contains(AbstractFSWALProvider.getWalFilePrefix(wal))) {
+      return;
+    }
+    synchronized (wal) {
+      recordLogAndLatestPath(AbstractFSWALProvider.getCurrentFileName(wal));
+      // recordLogAndLatestPath will throw an exception if it fails and the WAL will not be registered
+      registeredWALs.add(AbstractFSWALProvider.getWalFilePrefix(wal));
     }
   }
 

@@ -22,6 +22,7 @@ package org.apache.hadoop.hbase.wal;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.hadoop.hbase.HConstants;

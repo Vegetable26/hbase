@@ -181,6 +181,10 @@ public abstract class AbstractFSWALProvider<T extends AbstractFSWAL<?>> implemen
     return ((AbstractFSWAL<?>) wal).getCurrentFileName();
   }
 
+  public static String getWalFilePrefix(final WAL wal) {
+    return ((AbstractFSWAL<?>) wal).getWalFilePrefix();
+  }
+
   /**
    * request a log roll, but don't actually do it.
    */

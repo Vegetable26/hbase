@@ -110,7 +110,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
 
   @Override
   public void addLog(String queueId, String filename) throws ReplicationException {
-    try (Table replicationTable = getOrBlockOnReplicationTable()) {
+    try (Table replicationTable = getOrFailReplicationTable()) {
       if (!checkQueueExists(queueId)) {
         // Each queue will have an Owner, OwnerHistory, and a collection of [WAL:offset] key values
         Put putNewQueue = new Put(Bytes.toBytes(buildQueueRowKey(queueId)));
@@ -119,6 +119,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
         putNewQueue.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
         replicationTable.put(putNewQueue);
       } else {
+        // TODO: Do we want to abort on safeQueueUpdate
         // Otherwise simply add the new log and offset as a new column
         Put putNewLog = new Put(queueIdToRowKey(queueId));
         putNewLog.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
@@ -126,7 +127,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
       }
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
-      abortable.abort(errMsg, e);
+      throw new ReplicationException(errMsg);
     }
   }
 

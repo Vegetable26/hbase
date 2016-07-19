@@ -87,7 +87,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   }
 
   @Override
-  public List<String> getListOfReplicators() {
+  public List<String> getListOfReplicators() throws ReplicationException {
     return super.getListOfReplicators();
   }
 
@@ -106,8 +106,8 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
 
   @Override
   public void addLog(String queueId, String filename) throws ReplicationException {
-    try (Table replicationTable = getOrBlockOnReplicationTable()) {
-      if (!checkQueueExists(queueId)) {
+    try (Table replicationTable = getOrBlockOnFastFailReplication()) {
+      if (!checkQueueExistsFailFast(queueId)) {
         // Each queue will have an Owner, OwnerHistory, and a collection of [WAL:offset] key values
         Put putNewQueue = new Put(Bytes.toBytes(buildQueueRowKey(queueId)));
         putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER, serverNameBytes);
@@ -115,6 +115,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
         putNewQueue.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
         replicationTable.put(putNewQueue);
       } else {
+        // TODO: Do we want to abort on safeQueueUpdate
         // Otherwise simply add the new log and offset as a new column
         Put putNewLog = new Put(queueIdToRowKey(queueId));
         putNewLog.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
@@ -122,7 +123,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
       }
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
-      abortable.abort(errMsg, e);
+      throw new ReplicationException(errMsg);
     }
   }
 
@@ -354,8 +355,8 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
    * @return Whether the queue is stored in HBase
    * @throws IOException
    */
-  private boolean checkQueueExists(String queueId) throws IOException {
-    try (Table replicationTable = getOrBlockOnReplicationTable()) {
+  private boolean checkQueueExistsFailFast(String queueId) throws IOException {
+    try (Table replicationTable = getOrBlockOnFastFailReplication()) {
       byte[] rowKey = queueIdToRowKey(queueId);
       return replicationTable.exists(new Get(rowKey));
     }

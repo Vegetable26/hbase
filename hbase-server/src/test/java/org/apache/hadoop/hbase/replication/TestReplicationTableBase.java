@@ -31,6 +31,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests ReplicationTableBase behavior when the Master startup is delayed. The table initialization
@@ -104,8 +105,12 @@ public class TestReplicationTableBase {
   public class RequestReplicationQueueData extends Thread {
     @Override
     public void run() {
-      assertEquals(0, rq.getListOfReplicators().size());
-      asyncRequestSuccess = true;
+      try {
+        assertEquals(0, rq.getListOfReplicators().size());
+        asyncRequestSuccess = true;
+      } catch (ReplicationException e) {
+        fail(e.getMessage());
+      }
     }
   }
 }

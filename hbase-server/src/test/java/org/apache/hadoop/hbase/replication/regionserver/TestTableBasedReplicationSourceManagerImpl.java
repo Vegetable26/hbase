@@ -21,16 +21,31 @@ package org.apache.hadoop.hbase.replication.regionserver;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
+import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
+import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
+import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
 import org.apache.hadoop.hbase.replication.ReplicationSourceDummy;
+import org.apache.hadoop.hbase.replication.ReplicationTableBase;
 import org.apache.hadoop.hbase.replication.TableBasedReplicationQueuesClientImpl;
 import org.apache.hadoop.hbase.replication.TableBasedReplicationQueuesImpl;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
-
+import org.apache.hadoop.hbase.wal.DefaultWALProvider;
+import org.apache.hadoop.hbase.wal.WAL;
+import org.apache.hadoop.hbase.wal.WALFactory;
 import org.junit.BeforeClass;
+import org.junit.Test;
 import org.junit.experimental.categories.Category;
+
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.Assert.fail;
 
 /**
  * Tests the ReplicationSourceManager with TableBasedReplicationQueue's and
@@ -59,4 +74,44 @@ public class TestTableBasedReplicationSourceManagerImpl extends TestReplicationS
     setupZkAndReplication();
   }
 
+  /**
+   * Test the prelog roll procedure for when Replication is not up. This simulates the cluster
+   * initialization process.
+   */
+  @Test
+  public void TestPrelogRoll() throws Exception {
+    ReplicationPeers peers = replication.getReplicationManager().getReplicationPeers();
+    peers.addPeer("peer", new ReplicationPeerConfig().setClusterKey("localhost:2818:/bogus1"), null);
+    peers.peerAdded("peer");
+    try {
+      // Check that the hardcoded WAL name that we use is valid
+      TableBasedReplicationQueuesImpl rq = new TableBasedReplicationQueuesImpl(
+          new ReplicationQueuesArguments(conf, zkw, zkw));
+      List<WALActionsListener> listeners = new ArrayList<>();
+      listeners.add(replication);
+      rq.blockUntilReplicationAvailable();
+      utility.getHBaseAdmin().disableTable(ReplicationTableBase.REPLICATION_TABLE_NAME);
+      final WALFactory wals = new WALFactory(utility.getConfiguration(), listeners,
+          URLEncoder.encode("regionserver:60020", "UTF8"));
+      try {
+        WAL wal = wals.getWAL(hri.getEncodedNameAsBytes(), hri.getTable().getNamespace());
+        replication.registerWal(wal);
+        fail("RegisteringWal should fail while replication is not available");
+      } catch (IOException e) {
+      }
+      final WAL nonReplicatedWal = wals.getWAL(hri.getEncodedNameAsBytes(), hri.getTable().getNamespace());
+      utility.getHBaseAdmin().enableTable(ReplicationTableBase.REPLICATION_TABLE_NAME);
+      replication.registerWal(nonReplicatedWal);
+      utility.getHBaseAdmin().disableTable(ReplicationTableBase.REPLICATION_TABLE_NAME);
+      try {
+        replication.preLogRoll(null, DefaultWALProvider.getCurrentFileName(nonReplicatedWal));
+        fail("Prelog roll should have attempted to register the log and thrown an exception");
+      } catch (IOException e) {
+      }
+    } finally {
+      utility.getHBaseAdmin().enableTable(ReplicationTableBase.REPLICATION_TABLE_NAME);
+      peers.removePeer("peer");
+      peers.peerRemoved("peer");
+    }
+  }
 }

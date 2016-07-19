@@ -42,6 +42,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.collections.set.SynchronizedSet;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -64,6 +65,7 @@ import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationTracker;
 import org.apache.hadoop.hbase.wal.DefaultWALProvider;
+import org.apache.hadoop.hbase.wal.WAL;
 
 /**
  * This class is responsible to manage all the replication
@@ -117,6 +119,7 @@ public class ReplicationSourceManager implements ReplicationListener {
   private final Random rand;
   private final boolean replicationForBulkLoadDataEnabled;
 
+  private Set<String> registeredWALs;
 
   /**
    * Creates a replication manager and sets the watch on all the other registered region servers
@@ -170,6 +173,7 @@ public class ReplicationSourceManager implements ReplicationListener {
     replicationForBulkLoadDataEnabled =
         conf.getBoolean(HConstants.REPLICATION_BULKLOAD_ENABLE_KEY,
           HConstants.REPLICATION_BULKLOAD_ENABLE_DEFAULT);
+    this.registeredWALs = Collections.synchronizedSet(new HashSet<String>());
   }
 
   /**
@@ -351,9 +355,17 @@ public class ReplicationSourceManager implements ReplicationListener {
   }
 
   void preLogRoll(Path newLog) throws IOException {
-    recordLog(newLog);
     String logName = newLog.getName();
     String logPrefix = DefaultWALProvider.getWALPrefixFromWALName(logName);
+    if (registeredWALs.contains(logPrefix)) {
+      recordLogAndLatestPath(newLog);
+    }
+  }
+
+  private void recordLogAndLatestPath(Path newLog) throws IOException {
+    String logName = newLog.getName();
+    String logPrefix = DefaultWALProvider.getWALPrefixFromWALName(logName);
+    recordLog(newLog);
     synchronized (latestPaths) {
       Iterator<Path> iterator = latestPaths.iterator();
       while (iterator.hasNext()) {
@@ -419,10 +431,34 @@ public class ReplicationSourceManager implements ReplicationListener {
 
   void postLogRoll(Path newLog) throws IOException {
     // This only updates the sources we own, not the recovered ones
+    String logName = newLog.getName();
+    String logPrefix = DefaultWALProvider.getWALPrefixFromWALName(logName);
+    if (registeredWALs.contains(logPrefix)) {
+      enqueueNewLog(newLog);
+    }
+  }
+
+  void enqueueNewLog(Path newLog) {
     for (ReplicationSourceInterface source : this.sources) {
       source.enqueueLog(newLog);
     }
   }
+
+  void registerWal(WAL wal) throws IOException {
+    synchronized (wal) {
+      if (registeredWALs.contains(DefaultWALProvider.getWalFilePrefix(wal))) {
+        return;
+      }
+      // Perform the prelog and postlog roll actions
+      // We have to lock on the rollwriter right here
+      recordLogAndLatestPath(DefaultWALProvider.getCurrentFileName(wal));
+      enqueueNewLog(DefaultWALProvider.getCurrentFileName(wal));
+      // recordLogAndLatestPath will throw an exception if it fails and the WAL will not be registered
+      registeredWALs.add(DefaultWALProvider.getWalFilePrefix(wal));
+    }
+  }
+
+
 
   /**
    * Factory method to create a replication source
@@ -722,7 +758,16 @@ public class ReplicationSourceManager implements ReplicationListener {
 
     @Override
     public void run() {
-      List<String> currentReplicators = replicationQueues.getListOfReplicators();
+      List<String> currentReplicators = null;
+      int counter = 0;
+      while (currentReplicators == null) {
+        try {
+          currentReplicators = replicationQueues.getListOfReplicators();
+        } catch (ReplicationException e) {
+          LOG.warn("AdoptAbandonedQueuesWorker failed to get list of replicators retrying. retries="
+              + (counter++));
+        }
+      }
       if (currentReplicators == null || currentReplicators.size() == 0) {
         return;
       }
@@ -790,5 +835,9 @@ public class ReplicationSourceManager implements ReplicationListener {
 
   public void cleanUpHFileRefs(String peerId, List<String> files) {
     this.replicationQueues.removeHFileRefs(peerId, files);
+  }
+
+  public ReplicationPeers getReplicationPeers() {
+    return replicationPeers;
   }
 }

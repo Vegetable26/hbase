@@ -72,7 +72,7 @@ import java.util.concurrent.TimeUnit;
  * to the caller to close the returned table.
  */
 @InterfaceAudience.Private
-abstract class ReplicationTableBase {
+public abstract class ReplicationTableBase {
 
   /** Name of the HBase Table used for tracking replication*/
   public static final TableName REPLICATION_TABLE_NAME =
@@ -106,8 +106,8 @@ abstract class ReplicationTableBase {
   * before the server is aborted.
   */
   private static final int DEFAULT_CLIENT_RETRIES = 240;
-  private static final int DEFAULT_CLIENT_PAUSE = 100;
-  private static final int DEFAULT_RPC_TIMEOUT = 60000;
+  private static final int DEFAULT_CLIENT_PAUSE = 5000;
+  private static final int DEFAULT_RPC_TIMEOUT = 180000;
 
   /*
   * Make sure that the HBase Replication Table initialization has the proper timeouts. Because
@@ -116,14 +116,23 @@ abstract class ReplicationTableBase {
   */
   private static final int DEFAULT_INIT_RETRIES = 240;
   private static final int DEFAULT_INIT_PAUSE = 60000;
-  private static final int DEFAULT_INIT_RPC_TIMEOUT = 60000;
+  private static final int DEFAULT_INIT_RPC_TIMEOUT = 180000;
+
+  /*
+   * Used for fast fail table operations. Primarily ReplicationQueues.addLog(), which blocks
+   * during region opening, but is supposed to fail quickly if Replication is not up yet
+   */
+  private static final int DEFAULT_FAST_FAIL_RETRIES = 1;
+  private static final int DEFAULT_FAST_FAIL_TIMEOUT = 60000;
 
   // We only need a single thread to initialize the Replication Table
   private static final int NUM_INITIALIZE_WORKERS = 1;
 
   protected final Configuration conf;
+  protected final Configuration fastFailConf;
   protected final Abortable abortable;
   private final Connection connection;
+  private final Connection fastFailConnection;
   private final Executor executor;
   private volatile CountDownLatch replicationTableInitialized;
   private int clientRetries;
@@ -134,16 +143,24 @@ abstract class ReplicationTableBase {
   private int initPause;
   private int initRpcTimeout;
   private int initOperationTimeout;
+  private int fastFailTimeout;
+  private int fastFailRetries;
 
   public ReplicationTableBase(Configuration conf, Abortable abort) throws IOException {
     this.conf = new Configuration(conf);
+    this.fastFailConf = new Configuration(conf);
     this.abortable = abort;
     readTimeoutConf();
     decorateTimeoutConf();
     this.connection = ConnectionFactory.createConnection(this.conf);
+    this.fastFailConnection = ConnectionFactory.createConnection(this.fastFailConf);
     this.executor = setUpExecutor();
     this.replicationTableInitialized = new CountDownLatch(1);
     createReplicationTableInBackground();
+  }
+
+  public void blockUntilReplicationAvailable() throws IOException {
+    getOrBlockOnReplicationTable();
   }
 
   /**
@@ -157,6 +174,8 @@ abstract class ReplicationTableBase {
     initRetries = conf.getInt("hbase.replication.table.init.retries", DEFAULT_INIT_RETRIES);
     initPause = conf.getInt("hbase.replication.table.init.pause", DEFAULT_INIT_PAUSE);
     initRpcTimeout = conf.getInt("hbase.replication.table.init.timeout", DEFAULT_INIT_RPC_TIMEOUT);
+    fastFailTimeout= conf.getInt("hbase.replication.table.fastfail.timeout", DEFAULT_FAST_FAIL_TIMEOUT);
+    fastFailRetries = conf.getInt("hbase.replication.table.fastfail.retries", DEFAULT_FAST_FAIL_RETRIES);
     operationTimeout = clientRetries * (clientPause + rpcTimeout);
     initOperationTimeout = initRetries * (initPause + initRpcTimeout);
   }
@@ -170,6 +189,9 @@ abstract class ReplicationTableBase {
     conf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY, rpcTimeout);
     conf.setInt(HConstants.HBASE_CLIENT_OPERATION_TIMEOUT, operationTimeout);
     conf.setInt(HConstants.HBASE_CLIENT_META_OPERATION_TIMEOUT, operationTimeout);
+    fastFailConf.setInt(HConstants.HBASE_CLIENT_PAUSE, 0);
+    fastFailConf.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, fastFailRetries);
+    fastFailConf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY, fastFailTimeout);
   }
 
   /**
@@ -248,7 +270,7 @@ abstract class ReplicationTableBase {
    * be alive, dead or from a previous run of the cluster.
    * @return a list of server names
    */
-  protected List<String> getListOfReplicators() {
+  protected List<String> getListOfReplicators() throws ReplicationException{
     // scan all of the queues and return a list of all unique OWNER values
     Set<String> peerServers = new HashSet<String>();
     ResultScanner allQueuesInCluster = null;
@@ -260,8 +282,7 @@ abstract class ReplicationTableBase {
         peerServers.add(Bytes.toString(queue.getValue(CF_QUEUE, COL_QUEUE_OWNER)));
       }
     } catch (IOException e) {
-      String errMsg = "Failed getting list of replicators";
-      abortable.abort(errMsg, e);
+      throw new ReplicationException(e);
     } finally {
       if (allQueuesInCluster != null) {
         allQueuesInCluster.close();
@@ -378,7 +399,21 @@ abstract class ReplicationTableBase {
           e.getMessage();
       throw new InterruptedIOException(errMsg);
     }
-    return getAndSetUpReplicationTable();
+    return getAndSetUpReplicationTable(connection);
+  }
+
+  protected Table getOrBlockOnFastFailReplication() throws IOException {
+    if (replicationTableInitialized.getCount() != 0) {
+      throw new IOException("getOrBlockOnFastFailReplication() failed because replication is not available yet");
+    }
+    try {
+      replicationTableInitialized.await();
+    } catch (InterruptedException e) {
+      String errMsg = "Unable to acquire the Replication Table due to InterruptedException: " +
+          e.getMessage();
+      throw new InterruptedIOException(errMsg);
+    }
+    return getAndSetUpReplicationTable(fastFailConnection);
   }
 
   /**
@@ -387,7 +422,7 @@ abstract class ReplicationTableBase {
    * @return the Replication Table
    * @throws IOException
    */
-  private Table getAndSetUpReplicationTable() throws IOException {
+  private Table getAndSetUpReplicationTable(Connection connection) throws IOException {
     Table replicationTable = connection.getTable(REPLICATION_TABLE_NAME);
     setReplicationTableTimeOuts(replicationTable);
     return replicationTable;
@@ -400,6 +435,20 @@ abstract class ReplicationTableBase {
     replicationTable.setRpcTimeout(rpcTimeout);
     replicationTable.setOperationTimeout(operationTimeout);
     return replicationTable;
+  }
+
+  /*
+   * Checks whether the Replication Table exists yet
+   *
+   * @return whether the Replication Table exists
+   * @throws IOException
+   */
+  private boolean replicationTableAvailable() {
+    try (Admin tempAdmin = connection.getAdmin()){
+      return tempAdmin.tableExists(REPLICATION_TABLE_NAME) && tempAdmin.isTableAvailable(REPLICATION_TABLE_NAME);
+    } catch (IOException e) {
+      return false;
+    }
   }
 
   /**
@@ -434,7 +483,7 @@ abstract class ReplicationTableBase {
             DEFAULT_CLIENT_RETRIES);
         RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, DEFAULT_RPC_TIMEOUT);
         RetryCounter retryCounter = counterFactory.create();
-        while (!replicationTableExists()) {
+        while (!replicationTableAvailable()) {
           retryCounter.sleepUntilNextRetry();
           if (!retryCounter.shouldRetry()) {
             throw new IOException("Unable to acquire the Replication Table");
@@ -466,23 +515,17 @@ abstract class ReplicationTableBase {
       HTableDescriptor replicationTableDescriptor = new HTableDescriptor(REPLICATION_TABLE_NAME);
       replicationTableDescriptor.addFamily(REPLICATION_COL_DESCRIPTOR);
       try {
-        initAdmin.createTable(replicationTableDescriptor);
+        if (initAdmin.tableExists(REPLICATION_TABLE_NAME)) {
+          return;
+        }
+      } catch (IOException e) {
+        // If this tableExists is called to early admin will throw a null pointer exception. In this
+        // case proceed to create the Replication Table as we normally would.
+      }
+      try {
+        initAdmin.createTableAsync(replicationTableDescriptor, null);
       } catch (TableExistsException e) {
         // In this case we can just continue as normal
-      }
-    }
-
-    /**
-     * Checks whether the Replication Table exists yet
-     *
-     * @return whether the Replication Table exists
-     * @throws IOException
-     */
-    private boolean replicationTableExists() {
-      try {
-        return initAdmin.tableExists(REPLICATION_TABLE_NAME);
-      } catch (IOException e) {
-        return false;
       }
     }
   }

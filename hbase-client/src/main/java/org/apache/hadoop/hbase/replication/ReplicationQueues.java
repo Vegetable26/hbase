@@ -106,7 +106,7 @@ public interface ReplicationQueues {
    * be alive, dead or from a previous run of the cluster.
    * @return a list of server names
    */
-  List<String> getListOfReplicators();
+  List<String> getListOfReplicators() throws ReplicationException;
 
   /**
    * Checks if the provided znode is the same as this region server's

@@ -72,7 +72,7 @@ import java.util.concurrent.TimeUnit;
  * to the caller to close the returned table.
  */
 @InterfaceAudience.Private
-abstract class ReplicationTableBase {
+public abstract class ReplicationTableBase {
 
   /** Name of the HBase Table used for tracking replication*/
   public static final TableName REPLICATION_TABLE_NAME =
@@ -144,6 +144,10 @@ abstract class ReplicationTableBase {
     this.executor = setUpExecutor();
     this.replicationTableInitialized = new CountDownLatch(1);
     createReplicationTableInBackground();
+  }
+
+  public void blockUntilReplicationAvailable() throws IOException {
+    getOrBlockOnReplicationTable();
   }
 
   /**
@@ -381,6 +385,14 @@ abstract class ReplicationTableBase {
     return getAndSetUpReplicationTable();
   }
 
+  protected Table getOrFailReplicationTable() throws IOException {
+    if (replicationTableAvailable()) {
+      return getAndSetUpReplicationTable();
+    }
+    String errMsg = "getOrFailReplicationTable() failed, because Replication Table is not available yet";
+    throw new IOException(errMsg);
+  }
+
   /**
    * Creates a new copy of the Replication Table and sets up the proper Table time outs for it
    *
@@ -400,6 +412,20 @@ abstract class ReplicationTableBase {
     replicationTable.setRpcTimeout(rpcTimeout);
     replicationTable.setOperationTimeout(operationTimeout);
     return replicationTable;
+  }
+
+  /*
+   * Checks whether the Replication Table exists yet
+   *
+   * @return whether the Replication Table exists
+   * @throws IOException
+   */
+  private boolean replicationTableAvailable() {
+    try (Admin tempAdmin = connection.getAdmin()){
+      return tempAdmin.tableExists(REPLICATION_TABLE_NAME) && tempAdmin.isTableAvailable(REPLICATION_TABLE_NAME);
+    } catch (IOException e) {
+      return false;
+    }
   }
 
   /**
@@ -434,7 +460,7 @@ abstract class ReplicationTableBase {
             DEFAULT_CLIENT_RETRIES);
         RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, DEFAULT_RPC_TIMEOUT);
         RetryCounter retryCounter = counterFactory.create();
-        while (!replicationTableExists()) {
+        while (!replicationTableAvailable()) {
           retryCounter.sleepUntilNextRetry();
           if (!retryCounter.shouldRetry()) {
             throw new IOException("Unable to acquire the Replication Table");
@@ -469,20 +495,6 @@ abstract class ReplicationTableBase {
         initAdmin.createTable(replicationTableDescriptor);
       } catch (TableExistsException e) {
         // In this case we can just continue as normal
-      }
-    }
-
-    /**
-     * Checks whether the Replication Table exists yet
-     *
-     * @return whether the Replication Table exists
-     * @throws IOException
-     */
-    private boolean replicationTableExists() {
-      try {
-        return initAdmin.tableExists(REPLICATION_TABLE_NAME);
-      } catch (IOException e) {
-        return false;
       }
     }
   }

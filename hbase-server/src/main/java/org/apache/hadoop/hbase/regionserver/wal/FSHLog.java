@@ -572,6 +572,10 @@ public class FSHLog implements WAL {
     return maxLogs;
   }
 
+  public String getWalFilePrefix() {
+    return logFilePrefix;
+  }
+
   /**
    * Get the backing files associated with this WAL.
    * @return may be null if there are no files.

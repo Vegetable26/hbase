@@ -37,6 +37,7 @@ import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
+import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClientArguments;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
@@ -114,8 +115,8 @@ public class ReplicationChecker {
           }
         }
       }
-    } catch (KeeperException ke) {
-      throw new IOException(ke);
+    } catch (KeeperException | ReplicationException e) {
+      throw new IOException(e);
     }
 
     checkUnDeletedHFileRefsQueues(peerIds);

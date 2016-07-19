@@ -110,6 +110,9 @@ public class TestReplicationStateHBaseImpl {
       rq3.init(server3);
       rp = ReplicationFactory.getReplicationPeers(zkw, conf, zkw);
       rp.init();
+      ((TableBasedReplicationQueuesImpl) rq1).blockUntilReplicationIsAvailable();
+      ((TableBasedReplicationQueuesImpl) rq2).blockUntilReplicationIsAvailable();
+      ((TableBasedReplicationQueuesImpl) rq3).blockUntilReplicationIsAvailable();
     } catch (Exception e) {
       fail("testReplicationStateHBaseConstruction received an exception" + e.getMessage());
     }

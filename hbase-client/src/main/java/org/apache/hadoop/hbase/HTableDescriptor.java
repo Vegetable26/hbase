@@ -1767,4 +1767,16 @@ public class HTableDescriptor implements WritableComparable<HTableDescriptor> {
     return metaDescriptor;
   }
 
+  /**
+   * Checks if any of the column families within this table are replicated
+   * @return whether any of the column families within this table are replicated
+   */
+  public boolean checkAnyReplicatedFamilies() {
+    for (HColumnDescriptor family : families.values()) {
+      if (family.getScope() == HConstants.REPLICATION_SCOPE_GLOBAL) {
+        return true;
+      }
+    }
+    return false;
+  }
 }

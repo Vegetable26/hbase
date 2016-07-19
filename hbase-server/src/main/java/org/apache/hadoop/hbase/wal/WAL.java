@@ -21,6 +21,7 @@ package org.apache.hadoop.hbase.wal;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.hadoop.hbase.HConstants;
@@ -100,6 +101,10 @@ public interface WAL {
    * delete files.
    */
   void close() throws IOException;
+
+  void lockRollWriter();
+
+  void unlockRollWriter();
 
   /**
    * Append a set of edits to the WAL. The WAL is not flushed/sync'd after this transaction

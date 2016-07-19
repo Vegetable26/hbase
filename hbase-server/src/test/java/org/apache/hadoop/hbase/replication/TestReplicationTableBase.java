@@ -31,6 +31,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests ReplicationTableBase behavior when the Master startup is delayed. The table initialization
@@ -81,8 +82,7 @@ public class TestReplicationTableBase {
     final RequestReplicationQueueData async = new RequestReplicationQueueData();
     async.start();
     Thread.sleep(SLEEP_MILLIS);
-    // Test that the Replication Table has not been assigned and the methods are blocking
-    assertFalse(rb.getInitializationStatus());
+    // Check that the replication table operation is indeed blocking
     assertFalse(asyncRequestSuccess);
     utility.startMiniCluster();
     // Test that the methods do return the correct results after getting the table
@@ -104,8 +104,12 @@ public class TestReplicationTableBase {
   public class RequestReplicationQueueData extends Thread {
     @Override
     public void run() {
-      assertEquals(0, rq.getListOfReplicators().size());
-      asyncRequestSuccess = true;
+      try {
+        assertEquals(0, rq.getListOfReplicators().size());
+        asyncRequestSuccess = true;
+      } catch (ReplicationException e) {
+        fail(e.getMessage());
+      }
     }
   }
 }

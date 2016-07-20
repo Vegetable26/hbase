@@ -358,8 +358,6 @@ public class ReplicationSourceManager implements ReplicationListener {
   void preLogRoll(Path newLog) throws IOException {
     String logName = newLog.getName();
     String logPrefix = AbstractFSWALProvider.getWALPrefixFromWALName(logName);
-    // TODO: I don't know if it is safe to use WAL prefix as unique identifiers.
-    // TODO: Perhaps directly pass in the WAL
     if (registeredWALs.contains(logPrefix)) {
       recordLogAndLatestPath(newLog);
     }
@@ -434,17 +432,28 @@ public class ReplicationSourceManager implements ReplicationListener {
 
   void postLogRoll(Path newLog) throws IOException {
     // This only updates the sources we own, not the recovered ones
+    String logName = newLog.getName();
+    String logPrefix = AbstractFSWALProvider.getWALPrefixFromWALName(logName);
+    if (registeredWALs.contains(logPrefix)) {
+      enqueueNewLog(newLog);
+    }
+  }
+
+  void enqueueNewLog(Path newLog) {
     for (ReplicationSourceInterface source : this.sources) {
       source.enqueueLog(newLog);
     }
   }
 
   void registerWal(WAL wal) throws IOException {
-    if (registeredWALs.contains(AbstractFSWALProvider.getWalFilePrefix(wal))) {
-      return;
-    }
     synchronized (wal) {
+      if (registeredWALs.contains(AbstractFSWALProvider.getWalFilePrefix(wal))) {
+        return;
+      }
+      // Perform the prelog and postlog roll actions
+      // We have to lock on the rollwriter right here
       recordLogAndLatestPath(AbstractFSWALProvider.getCurrentFileName(wal));
+      enqueueNewLog(AbstractFSWALProvider.getCurrentFileName(wal));
       // recordLogAndLatestPath will throw an exception if it fails and the WAL will not be registered
       registeredWALs.add(AbstractFSWALProvider.getWalFilePrefix(wal));
     }

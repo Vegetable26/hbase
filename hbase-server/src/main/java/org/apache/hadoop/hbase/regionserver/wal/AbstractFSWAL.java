@@ -678,10 +678,14 @@ public abstract class AbstractFSWAL<W> implements WAL {
         Path newPath = getNewPath();
         // Any exception from here on is catastrophic, non-recoverable so we currently abort.
         W nextWriter = this.createWriterInstance(newPath);
-        tellListenersAboutPreLogRoll(oldPath, newPath);
-        // NewPath could be equal to oldPath if replaceWriter fails.
-        newPath = replaceWriter(oldPath, newPath, nextWriter);
-        tellListenersAboutPostLogRoll(oldPath, newPath);
+        // We synchronize on the WAL, to guarantee that the pre and post log roll are atomic
+        // operations both during rollWriter and Replication's WAL registration
+        synchronized (this) {
+          tellListenersAboutPreLogRoll(oldPath, newPath);
+          // NewPath could be equal to oldPath if replaceWriter fails.
+          newPath = replaceWriter(oldPath, newPath, nextWriter);
+          tellListenersAboutPostLogRoll(oldPath, newPath);
+        }
         if (LOG.isDebugEnabled()) {
           LOG.debug("Create new " + getClass().getSimpleName() + " writer with pipeline: "
               + Arrays.toString(getPipeline()));

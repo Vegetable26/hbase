@@ -1895,12 +1895,10 @@ public class HRegionServer extends HasThread implements
     } else {
       byte[] namespace = regionInfo.getTable().getNamespace();
       wal = walFactory.getWAL(regionInfo.getEncodedNameAsBytes(), namespace);
-      synchronized (walFactory) {
-        if (getReplicationSourceService() != null && checkReplication(regionInfo)) {
-          // TODO: Do we have to worry about the WAL file being updated in the mean time?
-          // TODO: We do lock on openRegion.
-          getReplicationSourceService().registerWal(wal);
-        }
+      if (getReplicationSourceService() != null && checkReplication(regionInfo)) {
+        // TODO: Do we have to worry about the WAL file being updated in the mean time?
+        // TODO: We do lock on openRegion.
+        getReplicationSourceService().registerWal(wal);
       }
     }
     roller.addWAL(wal);

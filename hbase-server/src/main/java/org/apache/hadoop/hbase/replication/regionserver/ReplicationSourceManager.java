@@ -758,7 +758,15 @@ public class ReplicationSourceManager implements ReplicationListener {
 
     @Override
     public void run() {
-      List<String> currentReplicators = replicationQueues.getListOfReplicators();
+      List<String> currentReplicators = null;
+      int count = 0;
+      while (currentReplicators == null) {
+        try {
+          currentReplicators = replicationQueues.getListOfReplicators();
+        } catch (ReplicationException e) {
+          LOG.warn("AdoptAbandonedQueuesWorker failed to get list of replicators retries=" + (count++));
+        }
+      }
       if (currentReplicators == null || currentReplicators.size() == 0) {
         return;
       }

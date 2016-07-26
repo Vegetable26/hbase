@@ -253,7 +253,7 @@ public abstract class ReplicationTableBase {
    * be alive, dead or from a previous run of the cluster.
    * @return a list of server names
    */
-  protected List<String> getListOfReplicators() {
+  protected List<String> getListOfReplicators() throws ReplicationException{
     // scan all of the queues and return a list of all unique OWNER values
     Set<String> peerServers = new HashSet<String>();
     ResultScanner allQueuesInCluster = null;
@@ -267,7 +267,7 @@ public abstract class ReplicationTableBase {
       }
     } catch (IOException e) {
       String errMsg = "Failed getting list of replicators";
-      abortable.abort(errMsg, e);
+      throw new ReplicationException(errMsg, e);
     } finally {
       if (allQueuesInCluster != null) {
         allQueuesInCluster.close();

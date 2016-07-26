@@ -114,8 +114,8 @@ public class ReplicationChecker {
           }
         }
       }
-    } catch (KeeperException ke) {
-      throw new IOException(ke);
+    } catch (KeeperException | ReplicationException e) {
+      throw new IOException(e);
     }
 
     checkUnDeletedHFileRefsQueues(peerIds);

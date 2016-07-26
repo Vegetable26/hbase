@@ -183,6 +183,7 @@ public abstract class ReplicationTableBase {
   private Executor setUpExecutor() {
     ThreadPoolExecutor tempExecutor = new ThreadPoolExecutor(NUM_INITIALIZE_WORKERS,
         NUM_INITIALIZE_WORKERS, 100, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+    tempExecutor.setKeepAliveTime(100, TimeUnit.MILLISECONDS);
     ThreadFactoryBuilder tfb = new ThreadFactoryBuilder();
     tfb.setNameFormat("ReplicationTableExecutor-%d");
     tfb.setDaemon(true);
@@ -256,6 +257,7 @@ public abstract class ReplicationTableBase {
     // scan all of the queues and return a list of all unique OWNER values
     Set<String> peerServers = new HashSet<String>();
     ResultScanner allQueuesInCluster = null;
+
     try (Table replicationTable = getOrBlockOnReplicationTable()){
       Scan scan = new Scan();
       scan.addColumn(CF_QUEUE, COL_QUEUE_OWNER);
@@ -386,7 +388,7 @@ public abstract class ReplicationTableBase {
   }
 
   protected Table getOrFailReplicationTable() throws IOException {
-    if (replicationTableAvailable()) {
+    if (replicationTableInitialized.getCount() == 0) {
       return getAndSetUpReplicationTable();
     }
     String errMsg = "getOrFailReplicationTable() failed, because Replication Table is not available yet";
@@ -422,7 +424,7 @@ public abstract class ReplicationTableBase {
    */
   private boolean replicationTableAvailable() {
     try (Admin tempAdmin = connection.getAdmin()){
-      return tempAdmin.tableExists(REPLICATION_TABLE_NAME) && tempAdmin.isTableAvailable(REPLICATION_TABLE_NAME);
+      return tempAdmin.tableExists(REPLICATION_TABLE_NAME) && tempAdmin.isTableAvailable(REPLICATION_TABLE_NAME) && tempAdmin.areAllTableRegionsOpen(REPLICATION_TABLE_NAME);
     } catch (IOException e) {
       return false;
     }
@@ -452,18 +454,19 @@ public abstract class ReplicationTableBase {
     @Override
     public void run() {
       try {
+        int maxRetries = conf.getInt("hbase.replication.table.init.wait.retries", Integer.MAX_VALUE);
+        int sleep = conf.getInt("hbase.replication.table.init.wait.sleep", 100);
         initConf = buildTableInitConf();
         initConnection = ConnectionFactory.createConnection(initConf);
         initAdmin = initConnection.getAdmin();
         createReplicationTable();
-        int maxRetries = conf.getInt("hbase.replication.createtable.retries.number",
-            DEFAULT_CLIENT_RETRIES);
-        RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, DEFAULT_RPC_TIMEOUT);
+        RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, sleep);
         RetryCounter retryCounter = counterFactory.create();
         while (!replicationTableAvailable()) {
           retryCounter.sleepUntilNextRetry();
           if (!retryCounter.shouldRetry()) {
-            throw new IOException("Unable to acquire the Replication Table");
+            throw new IOException("Timed out waiting on Replication Table retries=" +
+                initRetries + " sleep=" + initPause);
           }
         }
         replicationTableInitialized.countDown();
@@ -492,7 +495,14 @@ public abstract class ReplicationTableBase {
       HTableDescriptor replicationTableDescriptor = new HTableDescriptor(REPLICATION_TABLE_NAME);
       replicationTableDescriptor.addFamily(REPLICATION_COL_DESCRIPTOR);
       try {
-        initAdmin.createTable(replicationTableDescriptor);
+        if (initAdmin.tableExists(REPLICATION_TABLE_NAME)) {
+          return;
+        }
+      } catch (Exception e) {
+        // Meta table throws a null exception if you try to access it too early
+      }
+      try {
+        initAdmin.createTableAsync(replicationTableDescriptor, null);
       } catch (TableExistsException e) {
         // In this case we can just continue as normal
       }

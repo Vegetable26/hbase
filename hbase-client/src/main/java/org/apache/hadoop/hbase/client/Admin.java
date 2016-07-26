@@ -427,6 +427,13 @@ public interface Admin extends Abortable, Closeable {
   boolean isTableAvailable(TableName tableName) throws IOException;
 
   /**
+   * @param tableName name of table to check
+   * @return true if all of the table's regions are assigned and opened
+   * @throws IOException
+   */
+  boolean areAllTableRegionsOpen(TableName tableName) throws IOException;
+
+  /**
    * Use this api to check if the table has been created with the specified number of splitkeys
    * which was used while creating the given table. Note : If this api is used after a table's
    * region gets splitted, the api may return false.

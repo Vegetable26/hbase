@@ -185,6 +185,12 @@ abstract class ConnectionAdapter implements ClusterConnection {
   }
 
   @Override
+  public boolean areAllTableRegionsOpen(TableName tableName)
+      throws IOException {
+    return wrappedConnection.areAllTableRegionsOpen(tableName);
+  }
+
+  @Override
   public HTableDescriptor[] listTables() throws IOException {
     return wrappedConnection.listTables();
   }

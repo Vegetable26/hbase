@@ -27,6 +27,7 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -1012,6 +1013,38 @@ class ConnectionManager {
       };
       MetaScanner.metaScan(this, visitor, tableName);
       return available.get() && (regionCount.get() > 0);
+    }
+
+    @Override
+    public boolean areAllTableRegionsOpen(final TableName tableName) throws IOException {
+      final AtomicBoolean allRegionsOpen = new AtomicBoolean(true);
+      final AtomicInteger regionCount = new AtomicInteger(0);
+      MetaScannerVisitor visitor = new MetaScannerVisitorBase() {
+        @Override
+        public boolean processRow(Result row) throws IOException {
+          HRegionInfo info = MetaScanner.getHRegionInfo(row);
+          if (info != null && !info.isSplitParent()) {
+            if (tableName.equals(info.getTable())) {
+              ServerName server = HRegionInfo.getServerName(row);
+              // TODO: Move Bytes.toBytes("OPEN") to a constant somewhere
+              if (server == null ||
+                  !row.containsColumn(HConstants.CATALOG_FAMILY, HConstants.STATE_QUALIFIER) ||
+                  !Arrays.equals((Bytes.toBytes("OPEN")),
+                   row.getValue(HConstants.CATALOG_FAMILY, HConstants.STATE_QUALIFIER))) {
+                allRegionsOpen.set(false);
+                return false;
+              }
+              regionCount.incrementAndGet();
+            } else if (tableName.compareTo(info.getTable()) < 0) {
+              // Return if we are done with the current table
+              return false;
+            }
+          }
+          return true;
+        }
+      };
+      MetaScanner.metaScan(this, visitor, tableName);
+      return allRegionsOpen.get() && regionCount.get() > 0;
     }
 
     @Override

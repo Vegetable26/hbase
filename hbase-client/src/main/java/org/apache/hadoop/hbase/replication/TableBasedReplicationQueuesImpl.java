@@ -123,7 +123,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
       }
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
-      throw new ReplicationException(errMsg);
+      throw new ReplicationException(errMsg, e);
     }
   }
 

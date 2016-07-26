@@ -1544,6 +1544,10 @@ public class HBaseAdmin implements Admin {
     return isTableAvailable(TableName.valueOf(tableName));
   }
 
+  public boolean areAllTableRegionsOpen(TableName tableName) throws IOException{
+    return connection.areAllTableRegionsOpen(tableName);
+  }
+
   /**
    * Use this api to check if the table has been created with the specified number of
    * splitkeys which was used while creating the given table.

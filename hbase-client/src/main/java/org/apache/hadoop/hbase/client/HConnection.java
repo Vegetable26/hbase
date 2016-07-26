@@ -219,6 +219,8 @@ public interface HConnection extends Connection {
    */
   boolean isTableAvailable(TableName tableName) throws IOException;
 
+  boolean areAllTableRegionsOpen(final TableName tableName) throws IOException;
+
   @Deprecated
   boolean isTableAvailable(byte[] tableName) throws IOException;
 

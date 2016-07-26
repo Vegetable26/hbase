@@ -58,6 +58,7 @@ public class TestReplicationTableBase {
       TableBasedReplicationQueuesImpl.class, ReplicationQueues.class);
     conf.setClass("hbase.region.replica.replication.replicationQueuesClient.class",
       TableBasedReplicationQueuesClientImpl.class, ReplicationQueuesClient.class);
+    conf.setBoolean("hbase.assignment.usezk", false);
     // To make the Unit Test's run faster we set a lower pause value for table initialization
     conf.setInt("hbase.replication.table.init.pause", 1000);
     zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);

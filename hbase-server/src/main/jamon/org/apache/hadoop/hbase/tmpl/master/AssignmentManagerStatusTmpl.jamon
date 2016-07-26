@@ -96,7 +96,7 @@ int numOfPages = (int) Math.ceil(numOfRITs * 1.0 / ritsPerPage);
               <div class="tab-pane" id="tab_rits<% (recordItr / ritsPerPage) + 1 %>">
                   </%if>
                   <table class="table table-striped" style="margin-bottom:0px;"><tr><th>Region</th>
-                      <th>State</th><th>RIT time (ms)</th></tr>
+                      <th>State</th><th>RIT time (ms)</th><th>Retries </th></tr>
               </%if>
 
               <%if ritsOverThreshold.contains(rs.getRegion().getEncodedName()) %>

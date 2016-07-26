@@ -64,6 +64,9 @@ public interface ClusterConnection extends HConnection {
   boolean isTableAvailable(TableName tableName, byte[][] splitKeys) throws
       IOException;
 
+  @Override
+  boolean areAllTableRegionsOpen(final TableName tableName) throws IOException;
+
   /**
    * Find the location of the region of <i>tableName</i> that <i>row</i>
    * lives in.

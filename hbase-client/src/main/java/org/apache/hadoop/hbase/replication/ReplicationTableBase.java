@@ -502,7 +502,7 @@ public abstract class ReplicationTableBase {
         // Meta table throws a null exception if you try to access it too early
       }
       try {
-        initAdmin.createTableAsync(replicationTableDescriptor, null);
+        initAdmin.createTable(replicationTableDescriptor);
       } catch (TableExistsException e) {
         // In this case we can just continue as normal
       }

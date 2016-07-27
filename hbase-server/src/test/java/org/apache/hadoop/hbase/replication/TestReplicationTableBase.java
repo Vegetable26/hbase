@@ -82,8 +82,7 @@ public class TestReplicationTableBase {
     final RequestReplicationQueueData async = new RequestReplicationQueueData();
     async.start();
     Thread.sleep(SLEEP_MILLIS);
-    // Test that the Replication Table has not been assigned and the methods are blocking
-    assertFalse(rb.getInitializationStatus());
+    // Check that the replication table operation is indeed blocking
     assertFalse(asyncRequestSuccess);
     utility.startMiniCluster();
     // Test that the methods do return the correct results after getting the table

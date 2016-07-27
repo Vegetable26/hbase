@@ -88,7 +88,6 @@ public abstract class ReplicationTableBase {
     new HColumnDescriptor(CF_QUEUE).setMaxVersions(1)
       .setInMemory(true)
       .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-        // TODO: Figure out which bloom filter to use
       .setBloomFilterType(BloomType.NONE);
 
   // The value used to delimit the queueId and server name inside of a queue's row key. Currently a
@@ -102,12 +101,11 @@ public abstract class ReplicationTableBase {
   /*
   * Make sure that normal HBase Replication Table operations for replication have a high number of
   * retries. This is because the server is aborted if any HBase table operation fails. Each RPC will
-  * be attempted 240 times before exiting. This provides each operation with 2 hours of retries
-  * before the server is aborted.
+  * be attempted 240 times before exiting.
   */
   private static final int DEFAULT_CLIENT_RETRIES = 240;
   private static final int DEFAULT_CLIENT_PAUSE = 5000;
-  private static final int DEFAULT_RPC_TIMEOUT = 180000;
+  private static final int DEFAULT_RPC_TIMEOUT = 120000;
 
   /*
   * Make sure that the HBase Replication Table initialization has the proper timeouts. Because
@@ -116,14 +114,23 @@ public abstract class ReplicationTableBase {
   */
   private static final int DEFAULT_INIT_RETRIES = 240;
   private static final int DEFAULT_INIT_PAUSE = 60000;
-  private static final int DEFAULT_INIT_RPC_TIMEOUT = 180000;
+  private static final int DEFAULT_INIT_RPC_TIMEOUT = 120000;
 
   /*
    * Used for fast fail table operations. Primarily ReplicationQueues.addLog(), which blocks
-   * during region opening, but is supposed to fail quickly if Replication is not up yet
+   * during region opening, but is supposed to fail quickly if Replication is not up yet. Increasing
+   * these retry values will slow down cluster initialization
    */
   private static final int DEFAULT_FAST_FAIL_RETRIES = 1;
+  private static final int DEFAULT_FAST_FAIL_PAUSE = 0;
   private static final int DEFAULT_FAST_FAIL_TIMEOUT = 60000;
+
+  /*
+   * Determine the polling frequency used to check when the Replication Table comes up. With the
+   * default options we will poll in intervals of 100 ms forever.
+   */
+  private static final int DEFAULT_WAIT_TABLE_RETRIES = Integer.MAX_VALUE;
+  private static final int DEFAULT_WAIT_TABLE_PAUSE = 100;
 
   // We only need a single thread to initialize the Replication Table
   private static final int NUM_INITIALIZE_WORKERS = 1;
@@ -144,7 +151,10 @@ public abstract class ReplicationTableBase {
   private int initRpcTimeout;
   private int initOperationTimeout;
   private int fastFailTimeout;
+  private int fastFailPause;
   private int fastFailRetries;
+  private int fastFailOperationTimeout;
+
 
   public ReplicationTableBase(Configuration conf, Abortable abort) throws IOException {
     this.conf = new Configuration(conf);
@@ -159,10 +169,6 @@ public abstract class ReplicationTableBase {
     createReplicationTableInBackground();
   }
 
-  public void blockUntilReplicationAvailable() throws IOException {
-    getOrBlockOnReplicationTable();
-  }
-
   /**
    * Read in the configuration values that set up the Replication Table operation timeouts and
    * retries
@@ -174,10 +180,25 @@ public abstract class ReplicationTableBase {
     initRetries = conf.getInt("hbase.replication.table.init.retries", DEFAULT_INIT_RETRIES);
     initPause = conf.getInt("hbase.replication.table.init.pause", DEFAULT_INIT_PAUSE);
     initRpcTimeout = conf.getInt("hbase.replication.table.init.timeout", DEFAULT_INIT_RPC_TIMEOUT);
-    fastFailTimeout= conf.getInt("hbase.replication.table.fastfail.timeout", DEFAULT_FAST_FAIL_TIMEOUT);
-    fastFailRetries = conf.getInt("hbase.replication.table.fastfail.retries", DEFAULT_FAST_FAIL_RETRIES);
-    operationTimeout = clientRetries * (clientPause + rpcTimeout);
-    initOperationTimeout = initRetries * (initPause + initRpcTimeout);
+    fastFailTimeout= conf.getInt("hbase.replication.table.fastfail.timeout",
+        DEFAULT_FAST_FAIL_TIMEOUT);
+    fastFailRetries = conf.getInt("hbase.replication.table.fastfail.retries",
+        DEFAULT_FAST_FAIL_RETRIES);
+    fastFailPause = conf.getInt("hbase.replication.table.fastfail.pause", DEFAULT_FAST_FAIL_PAUSE);
+    fastFailOperationTimeout = getOperationTimeout(fastFailRetries, fastFailPause, fastFailTimeout);
+    operationTimeout = getOperationTimeout(clientRetries, clientPause, rpcTimeout);
+    initOperationTimeout = getOperationTimeout(initRetries, initPause, initRpcTimeout);
+  }
+
+  /**
+   * Calculate the operation timeout for a retried RPC request
+   * @param retries times we retry a request
+   * @param pause pause between failed requests
+   * @param rpcTimeout timeout of a RPC request
+   * @return the operation timeout for a retried RPC request
+   */
+  private int getOperationTimeout(int retries, int pause, int rpcTimeout) {
+    return retries * (pause + rpcTimeout);
   }
 
   /**
@@ -189,9 +210,11 @@ public abstract class ReplicationTableBase {
     conf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY, rpcTimeout);
     conf.setInt(HConstants.HBASE_CLIENT_OPERATION_TIMEOUT, operationTimeout);
     conf.setInt(HConstants.HBASE_CLIENT_META_OPERATION_TIMEOUT, operationTimeout);
-    fastFailConf.setInt(HConstants.HBASE_CLIENT_PAUSE, 0);
+    fastFailConf.setInt(HConstants.HBASE_CLIENT_PAUSE, fastFailPause);
     fastFailConf.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, fastFailRetries);
     fastFailConf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY, fastFailTimeout);
+    fastFailConf.setInt(HConstants.HBASE_CLIENT_OPERATION_TIMEOUT, fastFailOperationTimeout);
+    fastFailConf.setInt(HConstants.HBASE_CLIENT_META_OPERATION_TIMEOUT, fastFailOperationTimeout);
   }
 
   /**
@@ -206,14 +229,6 @@ public abstract class ReplicationTableBase {
     tfb.setDaemon(true);
     tempExecutor.setThreadFactory(tfb.build());
     return tempExecutor;
-  }
-
-  /**
-   * Get whether the Replication Table has been successfully initialized yet
-   * @return whether the Replication Table is initialized
-   */
-  public boolean getInitializationStatus() {
-    return replicationTableInitialized.getCount() == 0;
   }
 
   /**
@@ -402,9 +417,17 @@ public abstract class ReplicationTableBase {
     return getAndSetUpReplicationTable(connection);
   }
 
-  protected Table getOrBlockOnFastFailReplication() throws IOException {
+  /**
+   * Attempts to acquire the Replication Table. This operation will immediately throw an exception
+   * if the Replication Table is not up yet
+   *
+   * @return the Replication Table
+   * @throws IOException
+   */
+  protected Table getOrFastFailReplication() throws IOException {
     if (replicationTableInitialized.getCount() != 0) {
-      throw new IOException("getOrBlockOnFastFailReplication() failed because replication is not available yet");
+      throw new IOException("getOrFastFailReplication() failed because replication is not " +
+          "available yet");
     }
     try {
       replicationTableInitialized.await();
@@ -445,7 +468,8 @@ public abstract class ReplicationTableBase {
    */
   private boolean replicationTableAvailable() {
     try (Admin tempAdmin = connection.getAdmin()){
-      return tempAdmin.tableExists(REPLICATION_TABLE_NAME) && tempAdmin.isTableAvailable(REPLICATION_TABLE_NAME);
+      return tempAdmin.tableExists(REPLICATION_TABLE_NAME) &&
+          tempAdmin.isTableAvailable(REPLICATION_TABLE_NAME);
     } catch (IOException e) {
       return false;
     }
@@ -479,9 +503,11 @@ public abstract class ReplicationTableBase {
         initConnection = ConnectionFactory.createConnection(initConf);
         initAdmin = initConnection.getAdmin();
         createReplicationTable();
-        int maxRetries = conf.getInt("hbase.replication.createtable.retries.number",
-            DEFAULT_CLIENT_RETRIES);
-        RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, DEFAULT_RPC_TIMEOUT);
+        int maxRetries = conf.getInt("hbase.replication.waittable.retries",
+            DEFAULT_WAIT_TABLE_RETRIES);
+        int pause = conf.getInt("hbase.replication.waittable.retries.pause",
+            DEFAULT_WAIT_TABLE_PAUSE);
+        RetryCounterFactory counterFactory = new RetryCounterFactory(maxRetries, pause);
         RetryCounter retryCounter = counterFactory.create();
         while (!replicationTableAvailable()) {
           retryCounter.sleepUntilNextRetry();
@@ -518,7 +544,7 @@ public abstract class ReplicationTableBase {
         if (initAdmin.tableExists(REPLICATION_TABLE_NAME)) {
           return;
         }
-      } catch (IOException e) {
+      } catch (Exception e) {
         // If this tableExists is called to early admin will throw a null pointer exception. In this
         // case proceed to create the Replication Table as we normally would.
       }

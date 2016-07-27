@@ -106,7 +106,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   // addLog() will throw a ReplicationException immediately if the Replication Table is not up. It
   // will not wait and block on Replication to come up like the other methods
   @Override
-  public void addLog(String queueId, String filename) throws ReplicationException {
+  public void addLog(String queueId, String filename) {
     try (Table replicationTable = getOrBlockOnReplicationTable()) {
       // The following line will throw an exception if it fails to read Replication Table with the
       // fastFail config options
@@ -140,7 +140,12 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
       // Otherwise simply add the new log and offset as a new column
       Put putNewLog = new Put(queueIdToRowKey(queueId));
       putNewLog.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
-      safeQueueUpdate(putNewLog);
+      boolean updateSuccess = replicationTable.checkAndPut(putNewLog.getRow(),
+          CF_QUEUE, COL_QUEUE_OWNER, CompareFilter.CompareOp.EQUAL, serverNameBytes, putNewLog);
+      if (!updateSuccess) {
+        throw new ReplicationException("Failed to add new log queueId=" + queueId +
+            " filename=" + filename);
+      }
     }
   }
 

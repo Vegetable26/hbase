@@ -129,7 +129,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
 
   private void addLog(String queueId, String filename, Table replicationTable, boolean queueExists)
       throws IOException, ReplicationException{
-    if (queueExists) {
+    if (!queueExists) {
       // Each queue will have an Owner, OwnerHistory, and a collection of [WAL:offset] key values
       Put putNewQueue = new Put(Bytes.toBytes(buildQueueRowKey(queueId)));
       putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER, serverNameBytes);

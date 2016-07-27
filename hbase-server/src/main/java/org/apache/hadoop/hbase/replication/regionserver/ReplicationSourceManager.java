@@ -359,14 +359,14 @@ public class ReplicationSourceManager implements ReplicationListener {
     String logName = newLog.getName();
     String logPrefix = DefaultWALProvider.getWALPrefixFromWALName(logName);
     if (registeredWALs.contains(logPrefix)) {
-      recordLogAndLatestPath(newLog);
+      recordLogAndLatestPath(newLog, false);
     }
   }
 
-  private void recordLogAndLatestPath(Path newLog) throws IOException {
+  private void recordLogAndLatestPath(Path newLog, boolean failFast) throws IOException {
     String logName = newLog.getName();
     String logPrefix = DefaultWALProvider.getWALPrefixFromWALName(logName);
-    recordLog(newLog);
+    recordLog(newLog, failFast);
     synchronized (latestPaths) {
       Iterator<Path> iterator = latestPaths.iterator();
       while (iterator.hasNext()) {
@@ -386,7 +386,7 @@ public class ReplicationSourceManager implements ReplicationListener {
    * @param logPath the log path to check and enqueue
    * @throws IOException
    */
-  private void recordLog(Path logPath) throws IOException {
+  private void recordLog(Path logPath, boolean failFast) throws IOException {
     String logName = logPath.getName();
     String logPrefix = DefaultWALProvider.getWALPrefixFromWALName(logName);
     // update replication queues on ZK
@@ -394,7 +394,11 @@ public class ReplicationSourceManager implements ReplicationListener {
     synchronized (replicationPeers) {
       for (String id : replicationPeers.getPeerIds()) {
         try {
-          this.replicationQueues.addLog(id, logName);
+          if (failFast) {
+            this.replicationQueues.addLogFailFast(id, logName);
+          } else {
+            this.replicationQueues.addLog(id, logName);
+          }
         } catch (ReplicationException e) {
           throw new IOException("Cannot add log to replication queue"
               + " when creating a new source, queueId=" + id + ", filename=" + logName, e);
@@ -453,7 +457,7 @@ public class ReplicationSourceManager implements ReplicationListener {
       }
       // Perform the prelog and postlog roll actions
       // We have to lock on the rollwriter right here
-      recordLogAndLatestPath(DefaultWALProvider.getCurrentFileName(wal));
+      recordLogAndLatestPath(DefaultWALProvider.getCurrentFileName(wal), true);
       enqueueNewLog(DefaultWALProvider.getCurrentFileName(wal));
       // recordLogAndLatestPath will throw an exception if it fails and the WAL will not be registered
       registeredWALs.add(DefaultWALProvider.getWalFilePrefix(wal));

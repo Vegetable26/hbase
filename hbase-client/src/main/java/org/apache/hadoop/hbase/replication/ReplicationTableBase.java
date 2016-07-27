@@ -433,9 +433,9 @@ public abstract class ReplicationTableBase {
    * @return the Replication Table
    * @throws IOException
    */
-  protected Table getOrFastFailReplication() throws IOException {
+  protected Table getOrFailFastReplication() throws IOException {
     if (replicationTableInitialized.getCount() != 0) {
-      throw new IOException("getOrFastFailReplication() failed because replication is not " +
+      throw new IOException("getOrFailFastReplication() failed because replication is not " +
           "available yet");
     }
     try {

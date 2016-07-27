@@ -107,27 +107,43 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   // will not wait and block on Replication to come up like the other methods
   @Override
   public void addLog(String queueId, String filename) throws ReplicationException {
-    try (Table replicationTable = getOrFastFailReplication()) {
+    try (Table replicationTable = getOrBlockOnReplicationTable()) {
       // The following line will throw an exception if it fails to read Replication Table with the
       // fastFail config options
-      if (!checkQueueExistsFailFast(queueId)) {
-        // Each queue will have an Owner, OwnerHistory, and a collection of [WAL:offset] key values
-        Put putNewQueue = new Put(Bytes.toBytes(buildQueueRowKey(queueId)));
-        putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER, serverNameBytes);
-        putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER_HISTORY, EMPTY_STRING_BYTES);
-        putNewQueue.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
-        replicationTable.put(putNewQueue);
-      } else {
-        // Otherwise simply add the new log and offset as a new column
-        Put putNewLog = new Put(queueIdToRowKey(queueId));
-        putNewLog.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
-        safeQueueUpdate(putNewLog);
-      }
+      addLog(queueId, filename, replicationTable, checkQueueExists(queueId));
+    } catch (IOException | ReplicationException e) {
+      String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
+      abortable.abort(errMsg, e);
+    }
+  }
+
+  @Override
+  public void addLogFailFast(String queueId, String filename) throws ReplicationException {
+    try (Table replicationTable = getOrFailFastReplication()) {
+      addLog(queueId, filename, replicationTable, checkQueueExistsFailFast(queueId));
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
       throw new ReplicationException(errMsg, e);
     }
   }
+
+  private void addLog(String queueId, String filename, Table replicationTable, boolean queueExists)
+      throws IOException, ReplicationException{
+    if (queueExists) {
+      // Each queue will have an Owner, OwnerHistory, and a collection of [WAL:offset] key values
+      Put putNewQueue = new Put(Bytes.toBytes(buildQueueRowKey(queueId)));
+      putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER, serverNameBytes);
+      putNewQueue.addColumn(CF_QUEUE, COL_QUEUE_OWNER_HISTORY, EMPTY_STRING_BYTES);
+      putNewQueue.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
+      replicationTable.put(putNewQueue);
+    } else {
+      // Otherwise simply add the new log and offset as a new column
+      Put putNewLog = new Put(queueIdToRowKey(queueId));
+      putNewLog.addColumn(CF_QUEUE, Bytes.toBytes(filename), INITIAL_OFFSET_BYTES);
+      safeQueueUpdate(putNewLog);
+    }
+  }
+
 
   @Override
   public void removeLog(String queueId, String filename) {
@@ -350,6 +366,13 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
     }
   }
 
+  private boolean checkQueueExists(String queueId) throws IOException{
+    try (Table replicationTable = getOrBlockOnReplicationTable()) {
+      byte[] rowKey = queueIdToRowKey(queueId);
+      return replicationTable.exists(new Get(rowKey));
+    }
+  }
+
   /**
    * Check if the queue specified by queueId is stored in HBase. This method will throw an exception
    * if it fails to read the Replication Table after the options set in fastFailConfig
@@ -359,7 +382,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
    * @throws IOException
    */
   private boolean checkQueueExistsFailFast(String queueId) throws IOException {
-    try (Table replicationTable = getOrFastFailReplication()) {
+    try (Table replicationTable = getOrFailFastReplication()) {
       byte[] rowKey = queueIdToRowKey(queueId);
       return replicationTable.exists(new Get(rowKey));
     }

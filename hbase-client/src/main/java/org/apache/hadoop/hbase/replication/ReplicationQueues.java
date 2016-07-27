@@ -53,6 +53,14 @@ public interface ReplicationQueues {
   void addLog(String queueId, String filename) throws ReplicationException;
 
   /**
+   * Add a new WAL file to the given queue. If the queue does not exist it is created. If
+   * Replication is not initialized yet, this call will throw an exception immediately
+   * @param queueId a String that identifies the queue.
+   * @param filename name of the WAL
+   */
+  void addLogFailFast(String queueId, String filename) throws ReplicationException;
+
+  /**
    * Remove an WAL file from the given queue.
    * @param queueId a String that identifies the queue.
    * @param filename name of the WAL

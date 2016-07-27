@@ -122,6 +122,11 @@ public class ReplicationQueuesZKImpl extends ReplicationStateZKBase implements R
   }
 
   @Override
+  public void addLogFailFast(String queueId, String filename) throws ReplicationException {
+    addLog(queueId, filename);
+  }
+
+  @Override
   public void removeLog(String queueId, String filename) {
     try {
       String znode = ZKUtil.joinZNode(this.myQueuesZnode, queueId);

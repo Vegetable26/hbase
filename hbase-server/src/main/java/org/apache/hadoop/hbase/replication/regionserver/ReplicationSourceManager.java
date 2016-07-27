@@ -42,7 +42,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.collections.set.SynchronizedSet;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -64,6 +63,8 @@ import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueueInfo;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationTracker;
+import org.apache.hadoop.hbase.util.RetryCounter;
+import org.apache.hadoop.hbase.util.RetryCounterFactory;
 import org.apache.hadoop.hbase.wal.DefaultWALProvider;
 import org.apache.hadoop.hbase.wal.WAL;
 
@@ -445,7 +446,8 @@ public class ReplicationSourceManager implements ReplicationListener {
   }
 
   void registerWal(WAL wal) throws IOException {
-    synchronized (wal) {
+    try {
+      wal.lockRollWriter();
       if (registeredWALs.contains(DefaultWALProvider.getWalFilePrefix(wal))) {
         return;
       }
@@ -455,6 +457,8 @@ public class ReplicationSourceManager implements ReplicationListener {
       enqueueNewLog(DefaultWALProvider.getCurrentFileName(wal));
       // recordLogAndLatestPath will throw an exception if it fails and the WAL will not be registered
       registeredWALs.add(DefaultWALProvider.getWalFilePrefix(wal));
+    } finally {
+      wal.unlockRollWriter();
     }
   }
 
@@ -759,13 +763,24 @@ public class ReplicationSourceManager implements ReplicationListener {
     @Override
     public void run() {
       List<String> currentReplicators = null;
-      int counter = 0;
+      RetryCounterFactory retryCounterFactory = new RetryCounterFactory(Integer.MAX_VALUE, 1000);
+      RetryCounter retryCounter = retryCounterFactory.create();
       while (currentReplicators == null) {
         try {
+          // Table based replication will throw an exception if the Replication Table is not up yet.
+          // In that case we just sleep and retry later.
           currentReplicators = replicationQueues.getListOfReplicators();
         } catch (ReplicationException e) {
-          LOG.warn("AdoptAbandonedQueuesWorker failed to get list of replicators retrying. retries="
-              + (counter++));
+          try {
+            LOG.warn("AdoptAbandonedQueuesWorker failed to get list of replicators retrying. " +
+                "retries=" + retryCounter.getAttemptTimes());
+            retryCounter.useRetry();
+            retryCounter.sleepUntilNextRetry();
+          } catch (InterruptedException ie) {
+            LOG.error("AdoptAbandonedQueuesWorker received an InterruptedException while sleeping" +
+                " between retries. No queues were adopted.");
+            return;
+          }
         }
       }
       if (currentReplicators == null || currentReplicators.size() == 0) {

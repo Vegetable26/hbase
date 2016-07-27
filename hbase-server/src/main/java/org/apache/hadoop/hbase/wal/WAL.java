@@ -102,6 +102,10 @@ public interface WAL {
    */
   void close() throws IOException;
 
+  void lockRollWriter();
+
+  void unlockRollWriter();
+
   /**
    * Append a set of edits to the WAL. The WAL is not flushed/sync'd after this transaction
    * completes BUT on return this edit must have its region edit/sequence id assigned

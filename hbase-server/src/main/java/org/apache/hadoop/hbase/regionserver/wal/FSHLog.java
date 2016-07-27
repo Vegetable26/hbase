@@ -702,12 +702,12 @@ public class FSHLog implements WAL {
           // If this fails, we just keep going.... it is an optimization, not the end of the world.
           preemptiveSync((ProtobufLogWriter)nextWriter);
         }
-        synchronized (this) {
-          tellListenersAboutPreLogRoll(oldPath, newPath);
-          // NewPath could be equal to oldPath if replaceWriter fails.
-          newPath = replaceWriter(oldPath, newPath, nextWriter, nextHdfsOut);
-          tellListenersAboutPostLogRoll(oldPath, newPath);
-        }
+
+        tellListenersAboutPreLogRoll(oldPath, newPath);
+        // NewPath could be equal to oldPath if replaceWriter fails.
+        newPath = replaceWriter(oldPath, newPath, nextWriter, nextHdfsOut);
+        tellListenersAboutPostLogRoll(oldPath, newPath);
+
         // Can we delete any of the old log files?
         if (getNumRolledLogFiles() > 0) {
           cleanOldLogs();
@@ -1422,6 +1422,13 @@ public class FSHLog implements WAL {
     return len;
   }
 
+  public void lockRollWriter() {
+    rollWriterLock.lock();
+  }
+
+  public void unlockRollWriter() {
+    rollWriterLock.unlock();
+  }
 
   /**
    * This method gets the datanode replication count for the current WAL.

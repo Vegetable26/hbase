@@ -281,6 +281,15 @@ public abstract class ReplicationTableBase {
   }
 
   /**
+   * Blocks until the Replication Table is available
+   *
+   * @throws InterruptedException
+   */
+  public void blockUntilReplicationIsAvailable() throws InterruptedException {
+    replicationTableInitialized.await();
+  }
+
+  /**
    * Get a list of all region servers that have outstanding replication queues. These servers could
    * be alive, dead or from a previous run of the cluster.
    * @return a list of server names

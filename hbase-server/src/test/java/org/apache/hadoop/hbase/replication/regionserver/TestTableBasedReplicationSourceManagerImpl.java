@@ -89,7 +89,7 @@ public class TestTableBasedReplicationSourceManagerImpl extends TestReplicationS
           new ReplicationQueuesArguments(conf, zkw, zkw));
       List<WALActionsListener> listeners = new ArrayList<>();
       listeners.add(replication);
-      rq.blockUntilReplicationAvailable();
+      waitUntilReplicationEnabled(rq);
       utility.getHBaseAdmin().disableTable(ReplicationTableBase.REPLICATION_TABLE_NAME);
       final WALFactory wals = new WALFactory(utility.getConfiguration(), listeners,
           URLEncoder.encode("regionserver:60020", "UTF8"));
@@ -113,5 +113,10 @@ public class TestTableBasedReplicationSourceManagerImpl extends TestReplicationS
       peers.removePeer("peer");
       peers.peerRemoved("peer");
     }
+  }
+
+  @Override
+  void waitUntilReplicationEnabled(ReplicationQueues rq) throws InterruptedException{
+    ((TableBasedReplicationQueuesImpl) rq).blockUntilReplicationIsAvailable();
   }
 }

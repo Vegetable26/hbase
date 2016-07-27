@@ -283,6 +283,7 @@ public abstract class TestReplicationSourceManager {
         ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
           server.getZooKeeper()));
     rq.init(server.getServerName().toString());
+    waitUntilReplicationEnabled(rq);
     // populate some znodes in the peer znode
     files.add("log1");
     files.add("log2");
@@ -324,6 +325,7 @@ public abstract class TestReplicationSourceManager {
         ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
           server.getZooKeeper()));
     rq.init(server.getServerName().toString());
+    waitUntilReplicationEnabled(rq);
     // populate some znodes in the peer znode
     SortedSet<String> files = new TreeSet<String>();
     String group = "testgroup";
@@ -339,6 +341,7 @@ public abstract class TestReplicationSourceManager {
         ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(s1.getConfiguration(), s1,
             s1.getZooKeeper()));
     rq1.init(s1.getServerName().toString());
+    waitUntilReplicationEnabled(rq);
     ReplicationPeers rp1 =
         ReplicationFactory.getReplicationPeers(s1.getZooKeeper(), s1.getConfiguration(), s1);
     rp1.init();
@@ -427,7 +430,9 @@ public abstract class TestReplicationSourceManager {
     return logEdit;
   }
 
-  static class DummyNodeFailoverWorker extends Thread {
+  abstract void waitUntilReplicationEnabled(ReplicationQueues rq) throws InterruptedException;
+
+  class DummyNodeFailoverWorker extends Thread {
     private Map<String, Set<String>> logZnodesMap;
     Server server;
     private String deadRsZnode;
@@ -440,6 +445,7 @@ public abstract class TestReplicationSourceManager {
           ReplicationFactory.getReplicationQueues(new ReplicationQueuesArguments(server.getConfiguration(), server,
             server.getZooKeeper()));
       this.rq.init(this.server.getServerName().toString());
+      waitUntilReplicationEnabled(rq);
     }
 
     @Override

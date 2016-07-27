@@ -170,4 +170,9 @@ public class TestReplicationSourceManagerZkImpl extends TestReplicationSourceMan
       assertTrue(peer.startsWith("1"));
     }
   }
+
+  @Override
+  void waitUntilReplicationEnabled(ReplicationQueues rq) throws InterruptedException {
+    // no-op
+  }
 }

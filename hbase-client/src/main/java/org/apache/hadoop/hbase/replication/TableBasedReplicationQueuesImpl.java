@@ -111,14 +111,14 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   // addLog() will throw a ReplicationException immediately if the Replication Table is not up. It
   // will not wait and block on Replication to come up like the other methods
   @Override
-  public void addLog(String queueId, String filename) {
+  public void addLog(String queueId, String filename) throws ReplicationException {
     try (Table replicationTable = getOrBlockOnReplicationTable()) {
       // The following line will throw an exception if it fails to read Replication Table with the
       // fastFail config options
       addLog(queueId, filename, replicationTable, checkQueueExists(queueId));
     } catch (IOException | ReplicationException e) {
       String errMsg = "Failed adding log queueId=" + queueId + " filename=" + filename;
-      abortable.abort(errMsg, e);
+      throw new ReplicationException(errMsg, e);
     }
   }
 

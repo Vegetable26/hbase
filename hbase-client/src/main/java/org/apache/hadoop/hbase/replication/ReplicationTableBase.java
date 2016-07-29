@@ -106,6 +106,7 @@ public abstract class ReplicationTableBase {
   private static final int DEFAULT_CLIENT_RETRIES = 10;
   private static final int DEFAULT_CLIENT_PAUSE = 100;
   private static final int DEFAULT_RPC_TIMEOUT = 60000;
+  private static final int DEFAULT_SCANNER_TIMEOUT = DEFAULT_RPC_TIMEOUT * DEFAULT_CLIENT_RETRIES;
 
   /*
   * Make sure that the HBase Replication Table initialization has the proper timeouts. Because
@@ -145,6 +146,7 @@ public abstract class ReplicationTableBase {
   private int clientRetries;
   private int clientPause;
   private int rpcTimeout;
+  private int scannerTimeout;
   private int operationTimeout;
   private int initRetries;
   private int initPause;
@@ -177,6 +179,8 @@ public abstract class ReplicationTableBase {
     clientRetries = conf.getInt("hbase.replication.table.client.retries", DEFAULT_CLIENT_RETRIES);
     clientPause = conf.getInt("hbase.replication.table.client.pause", DEFAULT_CLIENT_PAUSE);
     rpcTimeout = conf.getInt("hbase.replication.table.rpc.timeout", DEFAULT_RPC_TIMEOUT);
+    scannerTimeout = conf.getInt("hbase.replication.table.scanner.timeout",
+        DEFAULT_SCANNER_TIMEOUT);
     initRetries = conf.getInt("hbase.replication.table.init.retries", DEFAULT_INIT_RETRIES);
     initPause = conf.getInt("hbase.replication.table.init.pause", DEFAULT_INIT_PAUSE);
     initRpcTimeout = conf.getInt("hbase.replication.table.init.timeout", DEFAULT_INIT_RPC_TIMEOUT);
@@ -210,6 +214,7 @@ public abstract class ReplicationTableBase {
     conf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY, rpcTimeout);
     conf.setInt(HConstants.HBASE_CLIENT_OPERATION_TIMEOUT, operationTimeout);
     conf.setInt(HConstants.HBASE_CLIENT_META_OPERATION_TIMEOUT, operationTimeout);
+    conf.setInt(HConstants.HBASE_CLIENT_SCANNER_TIMEOUT_PERIOD, scannerTimeout);
     fastFailConf.setInt(HConstants.HBASE_CLIENT_PAUSE, fastFailPause);
     fastFailConf.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, fastFailRetries);
     fastFailConf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY, fastFailTimeout);

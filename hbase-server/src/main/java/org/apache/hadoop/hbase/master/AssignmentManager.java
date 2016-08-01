@@ -91,6 +91,7 @@ import org.apache.hadoop.hbase.master.handler.OpenedRegionHandler;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos;
+import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionAlreadyInTransitionException;
 import org.apache.hadoop.hbase.regionserver.RegionOpeningState;
 import org.apache.hadoop.hbase.regionserver.RegionServerAbortedException;
@@ -3416,15 +3417,24 @@ public class AssignmentManager extends ZooKeeperListener {
     threadPoolExecutorService.submit(new AssignCallable(this, regionInfo, newPlan));
   }
 
-  public void invokeAssignLater(HRegionInfo regionInfo, long sleepMillis) {
-    scheduledThreadPoolExecutor.schedule(new DelayedAssignCallable(
-        new AssignCallable(this, regionInfo, true)), sleepMillis, TimeUnit.MILLISECONDS);
+  public void invokeAssignLater(HRegionInfo regionInfo, boolean forceNewPlan, long sleepMillis) {
+    scheduledThreadPoolExecutor.schedule(new DelayedAssignCallable(new AssignCallable(this,
+            regionInfo, forceNewPlan)),
+        sleepMillis, TimeUnit.MILLISECONDS);
   }
 
-  public void invokeAssignLaterOnFailure(HRegionInfo regionInfo) {
+  public void invokeAssignLaterOnFailure(HRegionInfo regionInfo, boolean forceNewPlan) {
     long sleepTime = backoffPolicy.getBackoffTime(retryConfig,
-        failedOpenTracker.get(regionInfo.getEncodedName()).get());
-    invokeAssignLater(regionInfo, sleepTime);
+        getRetrySleepTime(regionInfo.getEncodedName()));
+    invokeAssignLater(regionInfo, forceNewPlan, sleepTime);
+  }
+
+  private int getRetrySleepTime(String regionName) {
+    if (failedOpenTracker.containsKey(regionName)) {
+      return failedOpenTracker.get(regionName).get();
+    } else {
+      return 0;
+    }
   }
 
   void invokeUnAssign(HRegionInfo regionInfo) {
@@ -3738,10 +3748,7 @@ public class AssignmentManager extends ZooKeeperListener {
         } catch (HBaseIOException e) {
           LOG.warn("Failed to get region plan", e);
         }
-        // Have the current thread sleep a bit before resubmitting the RPC request
-        long sleepTime = backoffPolicy.getBackoffTime(retryConfig,
-            failedOpenTracker.get(encodedName).get());
-        invokeAssignLater(hri, sleepTime);
+        invokeAssignLaterOnFailure(hri, false);
       }
     }
   }
@@ -4500,8 +4507,10 @@ public class AssignmentManager extends ZooKeeperListener {
   }
 
   private class DelayedAssignCallable implements Runnable {
-    Callable callable;
-    public DelayedAssignCallable(Callable callable) {
+
+   Callable<?> callable;
+
+    public DelayedAssignCallable(Callable<?> callable) {
       this.callable = callable;
     }
 

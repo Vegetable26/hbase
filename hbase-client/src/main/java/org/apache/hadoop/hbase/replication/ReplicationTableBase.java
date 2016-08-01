@@ -101,9 +101,9 @@ public abstract class ReplicationTableBase {
   /*
   * Make sure that normal HBase Replication Table operations for replication have a high number of
   * retries. This is because the server is aborted if any HBase table operation fails. Each RPC will
-  * be attempted 10 times before exiting.
+  * be attempted 50 times before exiting.
   */
-  private static final int DEFAULT_CLIENT_RETRIES = 20;
+  private static final int DEFAULT_CLIENT_RETRIES = 50;
   private static final int DEFAULT_CLIENT_PAUSE = 6000;
   private static final int DEFAULT_RPC_TIMEOUT = 60000;
   private static final int DEFAULT_SCANNER_TIMEOUT = DEFAULT_RPC_TIMEOUT * DEFAULT_CLIENT_RETRIES;
